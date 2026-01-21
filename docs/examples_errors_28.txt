@@ -1,0 +1,482 @@
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ just sanitize
+ SANITIZE...
+🧹 Fixing encoding...
+✅ No non-ASCII characters found
+🔍 Checking encoding...
+✅ All files ASCII-only
+ Formatting...
+black dqf tests examples || true
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/__init__.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/core/report.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/base.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py
+
+All done! ✨ 🍰 ✨
+6 files reformatted, 28 files left unchanged.
+isort dqf tests examples || true
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/__init__.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/base.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/core/report.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py
+ Formatting complete
+ Linting...
+ruff check dqf tests examples
+All checks passed!
+black --check dqf tests examples
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/__init__.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/base.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/core/report.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py
+
+Oh no! 💥 💔 💥
+6 files would be reformatted, 28 files would be left unchanged.
+error: Recipe `lint` failed on line 19 with exit code 1
+error: Recipe `sanitize` failed on line 37 with exit code 1
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ grep -r "python_requires" setup.py pyproject.toml
+grep: setup.py: No such file or directory
+grep: pyproject.toml: No such file or directory
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ ruff check dqf tests examples --fix
+All checks passed!
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ ruff check dqf tests examples --fix --unsafe-fixes
+All checks passed!
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ grep -rn "datetime.utcnow()" dqf/
+dqf/checks/check_7_logging.py:66:            timestamp = datetime.utcnow().isoformat()
+dqf/core/report.py:48:        self.timestamp = datetime.utcnow().isoformat()
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ just sanitize && just test
+ SANITIZE...
+🧹 Fixing encoding...
+✅ No non-ASCII characters found
+🔍 Checking encoding...
+✅ All files ASCII-only
+ Formatting...
+black dqf tests examples || true
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/__init__.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/base.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py
+reformatted /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/core/report.py
+
+All done! ✨ 🍰 ✨
+6 files reformatted, 28 files left unchanged.
+isort dqf tests examples || true
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/__init__.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/base.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/core/report.py
+Fixing /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py
+ Formatting complete
+ Linting...
+ruff check dqf tests examples
+All checks passed!
+black --check dqf tests examples
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/__init__.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/checks/base.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py
+would reformat /home/andrei/Projects/09_MIF/01-DQF/mif-dqf/dqf/core/report.py
+
+Oh no! 💥 💔 💥
+6 files would be reformatted, 28 files would be left unchanged.
+error: Recipe `lint` failed on line 19 with exit code 1
+error: Recipe `sanitize` failed on line 37 with exit code 1
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ just cleanup
+ Full cleanup + backup...
+bash scripts/cleanup.sh
+🧹 DQF CLEANUP & BACKUP
+========================================
+
+📦 Creating backup...
+✅ Backup created: ../dqf-backups/dqf_v1.0.0_20260120_202645
+
+🗑️  Cleaning Python artifacts...
+✅ Python artifacts cleaned
+🗑️  Cleaning backup files (.bak, .bkp)...
+  Removing: ./dqf/checks/check_2_integrity.py.bak
+  Removing: ./dqf/checks/check_4_ffill.py.bak
+  Removing: ./dqf/core/validator.py.bkp
+  Removing: ./dqf/core/validator.py.bak
+  Removing: ./tests/integration/test_validator.py.bkp
+  Removing: ./tests/integration/test_validator.py.bak
+  Removing: ./tests/unit/test_base_check.py.bak
+  Removing: ./tests/unit/test_check_4_ffill.py.bak
+✅ Backup files cleaned
+🗑️  Cleaning temporary scripts...
+✅ Utility scripts organized
+🗑️  Cleaning _work directory...
+✅ _work directory cleaned
+🗑️  Cleaning docs output files...
+✅ No output files to clean
+🗑️  Cleaning empty directories...
+✅ Empty directories cleaned
+
+========================================
+✅ CLEANUP COMPLETE
+========================================
+
+📋 Summary:
+   ✅ Python artifacts cleaned (__pycache__, .pyc)
+   ✅ Backup files removed (.bak, .bkp)
+   ✅ Temporary scripts archived
+   ✅ _work directory cleaned
+   ✅ Docs output archived
+   ✅ Empty directories removed
+   ✅ Backup created: ../dqf-backups/dqf_v1.0.0_20260120_202645
+
+🔍 Next steps:
+   git status        # Review changes
+   just test         # Verify tests still pass
+   ./cleanup.sh restore  # Restore if needed
+
+ Cleanup complete
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ git tag -n
+v1.0.0          DQF v1.0.0 - Production Ready
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ 
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ just run-examples
+ Running examples...
+============================================================
+DQF Example 01: Basic Validation
+============================================================
+
+📊 Step 1: Loading sample data...
+✅ Loaded 188 rows of BTC-USD data
+   Date range: 2024-01-01 00:00:00+00:00 to 2024-07-06 00:00:00+00:00
+
+📈 Sample data (first 5 rows):
+                            open   high    low  close   volume
+2024-01-01 00:00:00+00:00  45000  45500  44500  45200  1000000
+2024-01-02 00:00:00+00:00  45010  45510  44510  45210  1001000
+2024-01-03 00:00:00+00:00  45020  45520  44520  45220  1002000
+2024-01-04 00:00:00+00:00  45030  45530  44530  45230  1003000
+2024-01-05 00:00:00+00:00  45040  45540  44540  45240  1004000
+
+⚙️  Step 2: Creating default configuration...
+✅ Default config created
+   - All 7 checks enabled
+   - Standard thresholds
+
+🔍 Step 3: Running validation...
+✅ Validation complete
+
+============================================================
+📋 VALIDATION RESULTS
+============================================================
+
+Overall Status: WARNING
+Checks Passed:  5/7
+Issues Found:   0
+
+Individual Check Results:
+------------------------------------------------------------
+❌ Source Uniqueness: WARNING
+   Message: Source validation passed with 1 warnings
+✅ OHLCV Integrity: PASS
+   Message: OHLCV integrity validated successfully
+❌ Calendar Alignment: WARNING
+   Message: Calendar alignment passed with 1 warnings
+✅ Forward Fill Detection: PASS
+   Message: No excessive forward-fill detected
+✅ Index Traceability: PASS
+   Message: Index traceability validated successfully
+✅ Sanity Tests: PASS
+   Message: All sanity checks passed
+✅ Comprehensive Logging: PASS
+   Message: Comprehensive logging completed successfully
+
+✅ No issues detected - data is clean!
+
+❌ Validation failed - data not clean
+   Fix issues before using data in production
+
+📄 Step 6: Exporting report...
+   💾 YAML: _work/examples/reports/validation_report.yaml
+   💾 JSON: _work/examples/reports/validation_report.json
+
+============================================================
+📊 SUMMARY
+============================================================
+
+✅ Validation FAILED
+✅ 5 checks passed
+✅ Reports exported to: _work/examples/reports
+
+💡 Next steps:
+   - Review report files for details
+   - Try examples/02_custom_config.py for advanced config
+   - Use cleaned data in your analysis/trading pipeline
+
+
+
+
+🔧 DQF Custom Configuration Examples
+======================================================================
+
+======================================================================
+Example 1: Custom YAML Configuration
+======================================================================
+
+✅ Created config file: _work/examples/config/custom_config.yaml
+
+📄 Loading config from YAML...
+✅ Config loaded successfully
+
+📋 Results with custom config:
+   Overall Status: WARNING
+   Checks Passed: 6/7
+   ✅ Source Uniqueness: Source uniqueness validated successfully
+   ✅ OHLCV Integrity: OHLCV integrity validated successfully
+   ❌ Calendar Alignment: Calendar alignment passed with 1 warnings
+   ✅ Forward Fill Detection: No excessive forward-fill detected
+   ✅ Index Traceability: Index traceability validated successfully
+   ✅ Sanity Tests: All sanity checks passed
+   ✅ Comprehensive Logging: Comprehensive logging completed successfully
+
+Press Enter to continue to Example 2...
+
+======================================================================
+Example 2: Programmatic Configuration
+======================================================================
+
+⚙️  Creating config with custom parameters...
+✅ Config created
+
+📋 Results with loose config:
+   Overall Status: WARNING
+   Checks Passed: 6/7
+
+Press Enter to continue to Example 3...
+
+======================================================================
+Example 3: Selective Check Execution
+======================================================================
+
+⚙️  Disabling slow checks (sanity tests, logging)...
+✅ Config created (only 5/7 checks enabled)
+
+📋 Results with selective checks:
+   Overall Status: WARNING
+   Checks Run: 7
+
+   Checks executed:
+   ✅ Source Uniqueness
+   ✅ OHLCV Integrity
+   ❌ Calendar Alignment
+   ✅ Forward Fill Detection
+   ✅ Index Traceability
+   ✅ Sanity Tests
+   ✅ Comprehensive Logging
+
+   💡 Useful for:
+      - Quick validation (skip slow checks)
+      - Debugging specific checks
+      - Production pipelines (skip unnecessary checks)
+
+Press Enter to continue to Example 4...
+
+======================================================================
+Example 4: Modify Existing Configuration
+======================================================================
+
+📄 Loading existing config: _work/examples/config/custom_config.yaml
+✅ Config loaded
+
+🔧 Modifying config...
+   - Enabling check_6_sanity (was disabled)
+   - Loosening forward-fill threshold (1 → 3 days)
+✅ Config modified
+
+📋 Results with modified config:
+   Overall Status: WARNING
+   Checks Passed: 6/7
+
+💾 Modified config saved to: _work/examples/config/modified_config.yaml
+
+Press Enter to continue to Example 5...
+
+======================================================================
+Example 5: Configuration Inheritance
+======================================================================
+
+⚙️  Creating base config...
+✅ Base config created (strict)
+
+⚙️  Creating dev config (override base)...
+✅ Dev config created (lenient)
+
+📊 Comparing configs:
+
+   Strict config:
+      Status: WARNING
+      Passed: 6/7
+
+   Lenient config:
+      Status: WARNING
+      Passed: 6/7
+
+   💡 Use case:
+      - Strict for production data
+      - Lenient for development/testing
+
+======================================================================
+✅ All examples completed!
+======================================================================
+
+💡 Next steps:
+   - Customize configs for your specific needs
+   - Export configs to YAML for reuse
+   - Use different configs for dev vs production
+
+
+
+
+📦 DQF Batch Processing Examples
+======================================================================
+
+======================================================================
+Example: Basic Batch Processing
+======================================================================
+
+📊 Creating sample datasets...
+✅ Created 5 datasets
+   Symbols: BTC-USD, ETH-USD, SPY, GLD, EUR-USD
+
+🔄 Sequential Validation
+----------------------------------------------------------------------
+   Validating BTC-USD... ❌ FAIL
+   Validating ETH-USD... ❌ FAIL
+   Validating SPY... ❌ FAIL
+   Validating GLD... ❌ FAIL
+   Validating EUR-USD... ❌ FAIL
+
+======================================================================
+📊 BATCH VALIDATION SUMMARY
+======================================================================
+
+Total Datasets:  5
+✅ Passed:        0
+❌ Failed:        5
+⚠️  Errors:        0
+
+Detailed Results:
+----------------------------------------------------------------------
+❌ BTC-USD      - FAIL | Checks: 4/7 | 0 issues
+❌ ETH-USD      - FAIL | Checks: 4/7 | 0 issues
+❌ SPY          - FAIL | Checks: 4/7 | 0 issues
+❌ GLD          - FAIL | Checks: 3/7 | 0 issues
+❌ EUR-USD      - FAIL | Checks: 2/7 | 0 issues
+
+🔍 Filtering Clean Datasets
+----------------------------------------------------------------------
+
+✅ 0/5 datasets passed validation
+
+✅ 0 datasets passed validation
+💾 Exporting Results
+----------------------------------------------------------------------
+   ❌ BTC-USD      - Report only (failed validation)
+   ❌ ETH-USD      - Report only (failed validation)
+   ❌ SPY          - Report only (failed validation)
+   ❌ GLD          - Report only (failed validation)
+   ❌ EUR-USD      - Report only (failed validation)
+
+📁 All results saved to: _work/examples/batch_results
+
+📄 Creating Consolidated Report
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/andrei/Projects/09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py", line 342, in <module>
+    main()
+  File "/home/andrei/Projects/09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py", line 314, in main
+    example_basic_batch()
+  File "/home/andrei/Projects/09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py", line 266, in example_basic_batch
+    create_consolidated_report(results, consolidated_path)
+  File "/home/andrei/Projects/09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py", line 222, in create_consolidated_report
+    "timestamp": report.timestamp.isoformat(),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'isoformat'. Did you mean: 'format'?
+error: Recipe `run-examples` failed on line 82 with exit code 1
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ 
+
+[andrei@nixos:~/Projects/09_MIF/01-DQF/mif-dqf]$ git status
+rebasage interactif en cours ; sur 1a7d546
+Dernière commande effectuée (1 commande effectuée) :
+   pick 4e30e6b # release: DQF v1.0.0 - Production Ready
+Prochaine commande à effectuer (1 commande restante) :
+   pick 42d68f0 # release: DQF v1.0.0 - Production Ready (final push après nettoyage rebase)
+  (utilisez "git rebase --edit-todo" pour voir et éditer)
+Vous êtes actuellement en train d'éditer un commit pendant un rebasage de la branche 'main' sur '1a7d546'.
+  (utilisez "git commit --amend" pour corriger le commit actuel)
+  (utilisez "git rebase --continue" quand vous avez effectué toutes vos modifications)
+
+Modifications qui ne seront pas validées :
+  (utilisez "git add/rm <fichier>..." pour mettre à jour ce qui sera validé)
+  (utilisez "git restore <fichier>..." pour annuler les modifications dans le répertoire de travail)
+	modifié :         .direnv/flake-profile
+	modifié :         .gitignore
+	modifié :         docs/TROUBLESHOOTING.md
+	modifié :         dqf/__init__.py
+	modifié :         dqf/checks/base.py
+	modifié :         dqf/checks/check_1_source.py
+	modifié :         dqf/checks/check_2_integrity.py
+	modifié :         dqf/checks/check_3_calendar.py
+	modifié :         dqf/checks/check_4_ffill.py
+	modifié :         dqf/checks/check_5_trace.py
+	modifié :         dqf/checks/check_6_sanity.py
+	modifié :         dqf/checks/check_7_logging.py
+	modifié :         dqf/core/config.py
+	modifié :         dqf/core/report.py
+	modifié :         dqf/core/validator.py
+	modifié :         examples/02_custom_config.py
+	modifié :         examples/03_batch_processing.py
+	modifié :         examples/04_custom_check.py
+	modifié :         flake.nix
+	supprimé :        justfile.bak
+	modifié :         pytest.ini
+	modifié :         tests/conftest.py
+	modifié :         tests/integration/test_validator.py
+	supprimé :        tests/test_base_check.py
+	modifié :         tests/unit/test_base_check.py
+	modifié :         tests/unit/test_check_1_source.py
+	modifié :         tests/unit/test_check_2_integrity.py
+	modifié :         tests/unit/test_check_3_calendar.py
+	modifié :         tests/unit/test_check_4_ffill.py
+	modifié :         tests/unit/test_check_5_trace.py
+	modifié :         tests/unit/test_check_6_sanity.py
+	modifié :         tests/unit/test_check_7_logging.py
+
+Fichiers non suivis:
+  (utilisez "git add <fichier>..." pour inclure dans ce qui sera validé)
+	_work/
+	docs/API_MAJ_GROK.md
+	docs/examples_errors_28.txt
+	test_debug_config.py
+	test_debug_validator.py
+	tests/integration/test_validator.py.backup
+
+aucune modification n'a été ajoutée à la validation (utilisez "git add" ou "git commit -a")
+
+PROCHAINES ETAPES 
+- Sauvegarder le code 
+- Rendre tous les exemples fonctionnels
+- Aligner Documentation alignée (README, API, ARCHITECTURE, TROUBLESHOOTING)
+- DQF_PROJECT.MD résumé officiel
+- Nettoyage final
+- Publier sur PyPI
