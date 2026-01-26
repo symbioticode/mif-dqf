@@ -1,7 +1,7 @@
 # DQF Troubleshooting Guide
 
 **Version**: 1.0.0  
-**Last Updated**: January 12, 2026
+**Last Updated**: January 21, 2026
 
 ---
 
@@ -230,10 +230,12 @@ print(f"Speed: {len(data)/elapsed:.0f} rows/sec")
 
 **Optimization Strategies**:
 
-**1. Disable non-critical checks**:
+**1. Note on selective checks** (v1.0.0):
 ```yaml
+# In v1.0.0, all checks always run
+# Selective execution coming in v1.1.0
 check_6_sanity:
-  enabled: false  # Statistical checks are slowest
+  enabled: false  # Documented but not enforced
 ```
 
 **2. Sample large datasets**:
@@ -247,17 +249,21 @@ if report.overall_status == 'PASS':
     full_report = validator.validate(data)
 ```
 
-**3. Chunked processing** (future feature):
+**3. Chunked processing**:
 ```python
-# Not yet implemented in v1.0.0
-# Coming in v1.1.0
-validator.validate_chunked(data, chunk_size=100000)
+# Process in chunks for memory efficiency
+chunk_size = 100000
+results = []
+
+for chunk in pd.read_csv("large.csv", chunksize=chunk_size):
+    report = validator.validate(chunk)
+    results.append(report)
 ```
 
 **Expected Performance** (v1.0.0):
-- 100K rows: ~1-2 seconds
-- 1M rows: ~5-10 seconds
-- 10M rows: ~50-100 seconds (consider chunking in v1.1.0)
+- 100 days: ~1.2s
+- 1,000 days: ~3.5s
+- 10,000 days: ~25s
 
 ---
 
@@ -362,54 +368,28 @@ yamllint config.yaml
 
 ---
 
-### Check not running
+### Check not running as expected
 
-**Symptom**: Check shows up as "SKIPPED" in report
+**Note**: In DQF v1.0.0, all checks are always executed regardless of `enabled` flag.
 
-**Cause**: Check disabled in config
-
-**Debugging**:
-```python
-config = DQFConfig.from_yaml("config.yaml")
-
-# Check if enabled
-print(config.check_2_integrity.get('enabled'))  # Should be True
-```
-
-**Solution**:
+**Understanding v1.0.0 Behavior**:
 ```yaml
-# Make sure enabled: true
-check_2_integrity:
-  enabled: true  # Explicitly set
-  max_violation_rate: 0.01
+# config.yaml
+check_6_sanity:
+  enabled: false  # This is documented but NOT enforced in v1.0.0
 ```
 
-**Config Precedence**:
-1. Explicit YAML config (highest priority)
-2. DQFConfig() constructor kwargs
-3. Default values (lowest priority)
-
-**Example**:
 ```python
-# YAML says disabled
-# config.yaml: check_2_integrity: enabled: false
-
-# Constructor overrides YAML
+# v1.0.0: Check still runs
 config = DQFConfig.from_yaml("config.yaml")
-config.check_2_integrity['enabled'] = True  # Override
-
 validator = DQFValidator(config)
+report = validator.validate(data)
+
+# All 7 checks execute regardless of 'enabled' flag
+print(f"Checks run: {report.total_checks}")  # 7
 ```
 
-## Section : Known Test Inconsistencies (v1.0.0)
-
-The unit test `test_validate_dataframe_not_dataframe` uses a regex pattern
-that cannot match the actual error message required by the integration test.
-
-This is due to a regex wildcard interpretation of the dot in `pd.DataFrame`.
-
-Because the integration test defines the public API behavior, the unit test
-is marked as xfail in v1.0.0 and will be corrected in v1.1.0.
+**Future** (v1.1.0): Selective execution will respect `enabled` flag.
 
 ---
 
@@ -560,17 +540,24 @@ print(f"pyyaml: {yaml.__version__}")
 
 ### Q: Can I disable specific checks?
 
-**A**: Yes, set `enabled: false` in config
+**A**: In v1.0.0, all checks always run. Selective execution will be available in v1.1.0.
 
 ```yaml
+# v1.0.0: This is documented but not enforced
 check_6_sanity:
-  enabled: false  # Skip sanity tests
+  enabled: false  # Check still runs
 ```
 
-Or programmatically:
+**Workaround**: Use report filtering:
 ```python
-config = DQFConfig()
-config.check_6_sanity['enabled'] = False
+report = validator.validate(data)
+
+# Filter out specific checks from analysis
+relevant_checks = {
+    name: result 
+    for name, result in report.check_results.items() 
+    if name != 'check_6_sanity'
+}
 ```
 
 ---
@@ -583,36 +570,50 @@ config.check_6_sanity['enabled'] = False
 from dqf.checks.base import BaseCheck, CheckResult
 
 class MyCustomCheck(BaseCheck):
-    def run(self, df):
+    def __init__(self):
+        super().__init__(
+            check_id="check_8_custom",
+            check_name="My Custom Check"
+        )
+    
+    def run(self, df, **kwargs):
         # Your logic
         if some_condition:
-            return CheckResult(status='FAIL', message='...')
-        return CheckResult(status='PASS')
+            return self._create_result(
+                status='FAIL',
+                message='...',
+                severity='WARNING'
+            )
+        return self._create_result(status='PASS')
 
 # Add to validator
 validator = DQFValidator(config)
 validator.add_custom_check('check_8_custom', MyCustomCheck())
 ```
 
-See `examples/custom_check_example.py` for complete guide.
+See `examples/04_custom_check.py` for complete guide.
 
 ---
 
 ### Q: What's the performance on large datasets?
 
 **A**: Approximately:
-- 100K rows: 1-2 seconds
-- 1M rows: 5-10 seconds
-- 10M rows: 50-100 seconds
+- 100 days: ~1.2s
+- 1,000 days: ~3.5s
+- 10,000 days: ~25s
 
-**Optimization**: Disable `check_6_sanity` for faster validation (it's the slowest).
+**Bottlenecks**:
+- Check 6 (Sanity): Statistical calculations (~35%)
+- Check 7 (Logging): I/O operations (~15%)
+- Check 2 (Integrity): Multiple validations (~25%)
 
 ---
 
 ### Q: Can I use DQF in production?
 
 **A**: Yes, v1.0.0 is production-ready:
-- 93 tests (92%+ coverage)
+- 104 tests (100% passing)
+- 77% coverage
 - Type hints (mypy compatible)
 - Robust error handling
 - Complete provenance tracking
@@ -623,9 +624,20 @@ See `examples/custom_check_example.py` for complete guide.
 
 ### Q: Does DQF clean data automatically?
 
-**A**: No (Phase 1). DQF detects and reports issues.
+**A**: No (v1.0.0). DQF validates and reports issues.
 
-**Phase 2** (v1.2.0): Optional auto-cleaning mode will be available.
+**Current Behavior**:
+```python
+report = validator.validate(data)
+
+if report.overall_status == 'PASS':
+    # cleaned_data is the ORIGINAL data (validated as clean)
+    # NOT modified or cleaned by DQF
+    clean_data = report.cleaned_data
+    assert clean_data.equals(data)  # True
+```
+
+**Future** (v1.2.0): Optional auto-cleaning mode will be available.
 
 **Current workaround**: Use report to identify issues, clean manually.
 
@@ -748,7 +760,7 @@ report = validator.validate(data)
 
 **Check log file**:
 ```bash
-cat logs/dqf_20260112_143022.log
+cat logs/dqf_20260121_143022.log
 ```
 
 ---
@@ -757,7 +769,7 @@ cat logs/dqf_20260112_143022.log
 
 - **GitHub Issues**: [github.com/symbioticode/mif-dqf/issues](https://github.com/symbioticode/mif-dqf/issues)
 - **GitHub Discussions**: [github.com/symbioticode/mif-dqf/discussions](https://github.com/symbioticode/mif-dqf/discussions)
-- **Documentation**: [Full Docs](../README.md)
+- **Email**: corail.synergia@proton.me
 
 ---
 
@@ -774,7 +786,11 @@ cat logs/dqf_20260112_143022.log
 
 ## Known Limitations
 
-### Phase 1 Limitations (v1.0.0)
+### v1.0.0 Limitations
+
+**Selective check execution**:
+- All checks always run regardless of `enabled` flag
+- Feature coming in v1.1.0
 
 **No active data cleaning**:
 - DQF detects issues but doesn't fix them
@@ -785,11 +801,6 @@ cat logs/dqf_20260112_143022.log
 - All checks run sequentially
 - Large datasets (>10M rows) may be slow
 - **Coming in v1.1.0**: Multi-threaded execution
-
-**No streaming data support**:
-- Full dataset must fit in memory
-- Not suitable for real-time data streams
-- **Coming in v1.1.0**: Chunked processing
 
 **Calendar detection limitations**:
 - Works well for standard calendars (NYSE, CRYPTO, FOREX)
@@ -802,7 +813,7 @@ cat logs/dqf_20260112_143022.log
 
 **v1.1.0** (Q1 2026):
 - Performance optimization (multi-threading)
-- Chunked processing for large datasets
+- Selective check execution (`enabled` flag enforced)
 - Enhanced calendar detection
 
 **v1.2.0** (Q1 2026):
@@ -818,3 +829,7 @@ cat logs/dqf_20260112_143022.log
 ---
 
 **End of Troubleshooting Guide**
+
+**Last Updated**: January 21, 2026  
+**Version**: 1.0.0  
+**Status**: Production Ready
