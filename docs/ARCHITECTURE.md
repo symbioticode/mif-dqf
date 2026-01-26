@@ -1,7 +1,7 @@
 # DQF Architecture
 
 **Version**: 1.0.0  
-**Last Updated**: January 12, 2026
+**Last Updated**: January 21, 2026
 
 ---
 
@@ -9,22 +9,17 @@
 
 ### The Ritual of Data Purification
 
-DQF is inspired by religious purification rituals practiced before sacred acts:
+DQF is inspired by systematic purification practices performed before critical operations:
 
-**Islam - Wuḍū (الوضوء)**:
-- 7 ablutions performed before Salat (prayer)
-- Without proper purification, prayer is invalid
-- Ritual ensures physical and spiritual cleanliness
+**Historical Precedents**:
+- **Medicine (1847)**: Semmelweis - Hand washing before surgery reduced mortality from 18% to 2%
+- **Laboratory Science**: Sterile technique before experiments ensures reproducibility
+- **Software Engineering**: Input validation before processing prevents catastrophic failures
 
-**Shinto - Temizuya (手水舎)**:
-- Water purification before entering shrine
-- Cleanses hands and mouth
-- Without this, one carries impurity into sacred space
-
-**DQF - Data Purification Framework**:
-- 7 checks performed before data analysis
-- Without validation, all analysis is invalid
-- Ensures data integrity and traceability
+**Cultural Parallels** (methodological approach):
+- **Islam - Wuḍū (الوضوء)**: 7 ablutions performed before Salat (prayer) - without proper purification, prayer is invalid
+- **Shinto - Temizuya (手水舎)**: Water purification before entering shrine - cleanses before sacred space
+- **DQF - Data Purification Framework**: 7 checks performed before data analysis - without validation, all analysis is invalid
 
 > "Without purification, no sacred act is valid.  
 > Without DQF, no analysis is trustworthy."
@@ -59,74 +54,76 @@ DQF is inspired by religious purification rituals practiced before sacred acts:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  INPUT: Raw OHLCV DataFrame                 │
+│              INPUT: Raw OHLCV DataFrame                     │
 │  (pandas DataFrame with datetime index, OHLCV columns)      │
-└────────────────────────────┬────────────────────────────────┘
-                             ↓
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                     DQFConfig (YAML)                        │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  - Check parameters (thresholds, severity levels)    │  │
-│  │  - Enable/disable flags per check                    │  │
-│  │  - Output paths (logs, reports, provenance)          │  │
-│  │  - Default values for all checks                     │  │
-│  └──────────────────────────────────────────────────────┘  │
-└────────────────────────────┬────────────────────────────────┘
-                             ↓
+│                   DQFConfig (YAML)                          │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  - Check parameters (thresholds, severity levels)    │ │
+│  │  - Enable/disable flags per check                    │ │
+│  │  - Output paths (logs, reports, provenance)          │ │
+│  │  - Default values for all checks                     │ │
+│  └───────────────────────────────────────────────────────┘ │
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────┐
 │              DQFValidator (Orchestrator)                    │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Check 1: SourceUniquenessCheck                      │  │
-│  │    → Validates single source + metadata              │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  Check 2: OHLCVIntegrityCheck                        │  │
-│  │    → Enforces H≥L, H≥O/C, V≥0, no NaN in OHLC       │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  Check 3: CalendarAlignmentCheck                     │  │
-│  │    → Detects calendar, validates trading days        │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  Check 4: ForwardFillLimitsCheck                     │  │
-│  │    → Detects excessive interpolation (max N days)    │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  Check 5: IndexTraceabilityCheck                     │  │
-│  │    → Validates unique, chronological, timezone-aware │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  Check 6: SanityTestsCheck                           │  │
-│  │    → Detects anomalies (extreme returns, zero vol)   │  │
-│  ├──────────────────────────────────────────────────────┤  │
-│  │  Check 7: ComprehensiveLoggingCheck                  │  │
-│  │    → Provenance tracking + JSON export               │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  Check 1: SourceUniquenessCheck                      │ │
+│  │    → Validates single source + metadata              │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  Check 2: OHLCVIntegrityCheck                        │ │
+│  │    → Enforces H≥L, H≥O/C, V≥0, no NaN in OHLC       │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  Check 3: CalendarAlignmentCheck                     │ │
+│  │    → Detects calendar, validates trading days        │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  Check 4: ForwardFillLimitsCheck                     │ │
+│  │    → Detects excessive interpolation                 │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  Check 5: IndexTraceabilityCheck                     │ │
+│  │    → Validates unique, chronological, timezone-aware │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  Check 6: SanityTestsCheck                           │ │
+│  │    → Detects anomalies (extreme returns, zero vol)   │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  Check 7: ComprehensiveLoggingCheck                  │ │
+│  │    → Provenance tracking + JSON export               │ │
+│  └───────────────────────────────────────────────────────┘ │
 │                                                             │
-│  Error Handling: Try-catch per check (robust)              │
-│  Execution: Sequential (Phase 1), Parallel (Future Phase 2)│
-└────────────────────────────┬────────────────────────────────┘
-                             ↓
+│  Error Handling: Try-catch per check (robustness)          │
+│  Execution: Sequential (v1.0.0), Parallel (v1.1.0+)        │
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                      DQFReport                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  - overall_status: PASS or FAIL                      │  │
-│  │  - checks_passed: N/7                                │  │
-│  │  - check_results: {check_name: CheckResult}          │  │
-│  │  - all_issues: List[CheckIssue]                      │  │
-│  │  - cleaned_data: DataFrame (if PASS)                 │  │
-│  │  - provenance: Dict (full chain)                     │  │
-│  │                                                       │  │
-│  │  Methods:                                            │  │
-│  │    - to_yaml() → YAML export                         │  │
-│  │    - to_json() → JSON export                         │  │
-│  │    - to_dict() → Python dict                         │  │
-│  └──────────────────────────────────────────────────────┘  │
-└────────────────────────────┬────────────────────────────────┘
-                             ↓
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  - overall_status: PASS/WARNING/FAIL                 │ │
+│  │  - checks_passed: N/7                                │ │
+│  │  - check_results: {check_name: CheckResult}          │ │
+│  │  - all_issues: List[CheckIssue]                      │ │
+│  │  - cleaned_data: DataFrame (if PASS)                 │ │
+│  │  - provenance: Dict (full chain)                     │ │
+│  │                                                       │ │
+│  │  Methods:                                            │ │
+│  │    - to_yaml() → YAML export                         │ │
+│  │    - to_json() → JSON export                         │ │
+│  │    - to_dict() → Python dict                         │ │
+│  └───────────────────────────────────────────────────────┘ │
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────┐
 │           OUTPUT: Validated DataFrame + Report              │
-│  - Clean data (if PASS)                                     │
-│  - Detailed report (YAML/JSON)                              │
-│  - Provenance JSON (full audit trail)                       │
-│  - Logs (comprehensive, timestamped)                        │
+│  - Clean data (if PASS)                                    │
+│  - Detailed report (YAML/JSON)                             │
+│  - Provenance JSON (full audit trail)                      │
+│  - Logs (timestamped, comprehensive)                       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
 
 ### Data Flow
 
@@ -137,10 +134,10 @@ DQF is inspired by religious purification rituals practiced before sacred acts:
 2. **Configuration Stage**:
    - DQFConfig validates all parameters
    - Sets thresholds, severity levels, output paths
-   - Enables/disables specific checks
+   - Enables/disables specific checks (Note: v1.0.0 runs all checks)
 
 3. **Validation Stage**:
-   - DQFValidator runs all enabled checks sequentially
+   - DQFValidator runs all 7 checks sequentially
    - Each check returns CheckResult (PASS/FAIL + details)
    - Errors caught per check (robust error handling)
 
@@ -269,14 +266,20 @@ class BaseCheck(ABC):
 **Custom Check Example**:
 ```python
 class CustomVolumeCheck(BaseCheck):
+    def __init__(self):
+        super().__init__(
+            check_id="check_8_volume",
+            check_name="Custom Volume Check"
+        )
+    
     def run(self, df: pd.DataFrame) -> CheckResult:
         if (df['volume'] == 0).sum() > 10:
-            return CheckResult(
+            return self._create_result(
                 status='FAIL',
                 severity='WARNING',
                 message='More than 10 zero-volume days detected'
             )
-        return CheckResult(status='PASS')
+        return self._create_result(status='PASS')
 ```
 
 ---
@@ -337,7 +340,7 @@ class CustomVolumeCheck(BaseCheck):
 **Can Order Change?**
 - Yes, checks are mostly independent
 - Exception: Check 3 should precede Check 4 (calendar affects gap detection)
-- Future: Parallel execution possible (Phase 2)
+- Future: Parallel execution possible (v1.1.0+)
 
 ---
 
@@ -352,7 +355,7 @@ class CustomVolumeCheck(BaseCheck):
 | **Error Handling** | Exception = bug, FAIL = bad data | Clear separation | Everything as exceptions (poor UX) |
 | **Column Names** | Case-insensitive (lowercase) | Robustness (Close vs close) | Case-sensitive (fragile) |
 | **Violation Counting** | Per violation, not per row | Accurate (1 row = 3+ violations) | Per row (undercounts) |
-| **Cleaned Data** | Passthrough (Phase 1) | No opinion on cleaning strategy | Auto-clean (too opinionated) |
+| **Cleaned Data** | Passthrough (v1.0.0) | No opinion on cleaning strategy | Auto-clean (too opinionated) |
 | **Type Hints** | 100% coverage | mypy compatibility, clarity | Partial hints (inconsistent) |
 | **Testing** | pytest + fixtures | Industry standard, powerful | unittest (verbose), nose (dead) |
 
@@ -369,10 +372,10 @@ class CustomVolumeCheck(BaseCheck):
 - Some sources return 'close'
 - Normalizing to lowercase avoids fragile assumptions
 
-**Why passthrough cleaned data (Phase 1)?**
+**Why passthrough cleaned data (v1.0.0)?**
 - Cleaning is opinionated (how to handle NaN?)
-- Phase 1: Detect and report
-- Phase 2: Optional cleaning strategies
+- v1.0.0: Detect and report
+- v1.2.0+: Optional cleaning strategies
 - Users maintain control
 
 ---
@@ -386,11 +389,20 @@ class CustomVolumeCheck(BaseCheck):
 from dqf.checks.base import BaseCheck, CheckResult
 
 class MyCustomCheck(BaseCheck):
-    def run(self, df: pd.DataFrame) -> CheckResult:
+    def __init__(self):
+        super().__init__(
+            check_id="check_8_custom",
+            check_name="My Custom Check"
+        )
+    
+    def run(self, df):
         # Your validation logic
         if some_condition:
-            return CheckResult(status='FAIL', message='...')
-        return CheckResult(status='PASS')
+            return self._create_result(
+                status='FAIL',
+                message='...'
+            )
+        return self._create_result(status='PASS')
 ```
 
 **Step 2**: Register in DQFValidator
@@ -457,41 +469,41 @@ class CustomReport(DQFReport):
 - Consider sampling for Check 6 (future optimization)
 
 **Memory Usage**:
-- Full DataFrame kept in memory (Phase 1)
+- Full DataFrame kept in memory (v1.0.0)
 - Provenance tracking adds ~10% overhead
 - Future: Streaming validation (chunked processing)
 
 ### Optimization Strategies
 
-**Current (Phase 1)**:
+**Current (v1.0.0)**:
 - Vectorized operations (pandas/numpy)
 - Minimal copying (views where possible)
-- Lazy evaluation (only enabled checks run)
+- Sequential execution (all checks run)
 
-**Future (Phase 2)**:
+**Future (v1.1.0+)**:
 - Multi-threading (checks independent)
+- Selective execution (`enabled` flag enforced)
 - Chunked processing (streaming)
-- GPU acceleration (Check 6 statistical tests)
 
 ### Scalability
 
-**Phase 1 Limits**:
+**v1.0.0 Performance**:
 - Single-threaded validation
 - Full dataset in memory
 - Sequential check execution
 
-**Target**: 1M rows in <10 seconds (Phase 1)  
-**Achieved**: 1M rows in ~5 seconds (tested on BTC-USD)
+**Target**: 1,000 days in <5 seconds (v1.0.0)  
+**Achieved**: 1,000 days in ~3.5 seconds
 
-**Phase 2 Goals**:
-- 10M rows in <30 seconds (multi-threaded)
-- 100M rows in <5 minutes (streaming + GPU)
+**v1.1.0+ Goals**:
+- 10,000 days in <30 seconds (multi-threaded)
+- 100,000 days in <5 minutes (streaming + optimization)
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests (84 tests)
+### Unit Tests (96 tests)
 
 **Per Check** (10-15 tests each):
 - PASS scenarios (clean data)
@@ -505,7 +517,7 @@ class CustomReport(DQFReport):
 
 **Coverage Target**: 90%+ per module
 
-### Integration Tests (9 tests)
+### Integration Tests (8 tests)
 
 **End-to-End Workflows**:
 - Full validation pipeline (7 checks)
@@ -514,7 +526,7 @@ class CustomReport(DQFReport):
 - Error scenarios (check crashes)
 
 **Fixtures**:
-- Clean BTC-USD data (187 days)
+- Clean OHLCV data (187 days)
 - Corrupted data (H<L violations)
 - Missing data (NaN in OHLC)
 
@@ -523,32 +535,51 @@ class CustomReport(DQFReport):
 ### Test Coverage (Current)
 
 ```
-Overall:          92%
-check_1_source:   100%
-check_2_integrity: 95%
-check_3_calendar:  92%
+Overall:          77%
+check_1_source:   79%
+check_2_integrity: 92%
+check_3_calendar:  85%
 check_4_ffill:     93%
-check_5_index:     94%
-check_6_sanity:    91%
-check_7_logging:   96%
-validator.py:      98%
-report.py:         97%
-config.py:         95%
+check_5_index:     81%
+check_6_sanity:    90%
+check_7_logging:   84%
+validator.py:      65%
+report.py:         79%
+config.py:         31%
 ```
 
-**Critical Paths**: 100% coverage
-- DQFValidator.validate()
-- DQFReport.to_yaml()
-- BaseCheck.run()
+**Critical Paths**: High coverage
+- DQFValidator.validate(): Well tested
+- DQFReport.to_yaml(): Well tested
+- BaseCheck.run(): Well tested
 
 ---
 
 ## Future Architecture
 
-### Phase 2: Active Data Cleaning (Q1 2026)
+### v1.1.0: Performance & Selective Execution (Q1 2026)
+
+**Selective Check Execution**:
+```yaml
+# Enforced in v1.1.0 (not in v1.0.0)
+check_6_sanity:
+  enabled: false  # Will actually skip check
+```
+
+**Multi-threading**:
+```python
+# Checks run in parallel (independent)
+config = DQFConfig(parallel=True)
+validator = DQFValidator(config)
+report = validator.validate(data)  # 3× faster
+```
+
+---
+
+### v1.2.0: Active Data Cleaning (Q1 2026)
 
 **Current**: DQF detects issues, reports them, passes through data  
-**Phase 2**: DQF optionally cleans data based on strategies
+**v1.2.0**: DQF optionally cleans data based on strategies
 
 **Cleaning Strategies**:
 ```yaml
@@ -573,7 +604,7 @@ cleaning:
 
 ---
 
-### Phase 3: DAL Integration (Q2 2026)
+### v2.0.0: DAL Integration (Q2 2026)
 
 **Goal**: DQF called automatically by Data Abstraction Layer
 
@@ -601,37 +632,37 @@ provenance = fetcher.get_provenance()
 
 ---
 
-### Phase 4: MIF Integration (Q2 2026)
+### v3.0.0: MIF Integration (Q2 2026)
 
 **Layer -1 Positioning**:
 
 ```
-┌─────────────────────────────────────────┐
-│  MIF Certification (Layers 1-5)        │
-│  - Mathematical Limits                  │
-│  - Metric Classification                │
-│  - Validation (4 Phases)                │
-│  - Bias Detection                       │
-│  - Certification Report                 │
-└─────────────────┬───────────────────────┘
-                  ↑
+┌─────────────────────────────────────────────┐
+│  MIF Certification (Layers 1-5)            │
+│  - Mathematical Limits                      │
+│  - Metric Classification                    │
+│  - Validation (4 Phases)                    │
+│  - Bias Detection                           │
+│  - Certification Report                     │
+└──────────────────┬──────────────────────────┘
+                   ↑
          (Only if DQF PASS)
-                  ↑
-┌─────────────────────────────────────────┐
-│  DAL (Layer 0)                          │
-│  - Multi-source abstraction             │
-│  - Cache management                     │
-│  - Cross-validation                     │
-└─────────────────┬───────────────────────┘
-                  ↑
+                   ↓
+┌─────────────────────────────────────────────┐
+│  DAL (Layer 0)                              │
+│  - Multi-source abstraction                 │
+│  - Cache management                         │
+│  - Cross-validation                         │
+└──────────────────┬──────────────────────────┘
+                   ↑
          (Calls DQF internally)
-                  ↑
-┌─────────────────────────────────────────┐
-│  DQF (Layer -1) ← FOUNDATION            │
-│  - 7 Checks validation                  │
-│  - Provenance tracking                  │
-│  - Data certification                   │
-└─────────────────────────────────────────┘
+                   ↓
+┌─────────────────────────────────────────────┐
+│  DQF (Layer -1) ← FOUNDATION                │
+│  - 7 Checks validation                      │
+│  - Provenance tracking                      │
+│  - Data certification                       │
+└─────────────────────────────────────────────┘
 ```
 
 **Certification Workflow**:
@@ -650,3 +681,7 @@ provenance = fetcher.get_provenance()
 ---
 
 **End of ARCHITECTURE.md**
+
+**Version**: 1.0.0  
+**Last Updated**: January 21, 2026  
+**Status**: Production Ready
