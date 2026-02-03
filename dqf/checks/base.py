@@ -6,13 +6,20 @@ Defines abstract base class and result types for all validation checks.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
-from dqf.core.enums import (SEVERITY_CRITICAL, SEVERITY_ERROR, SEVERITY_INFO,
-                            SEVERITY_WARNING, STATUS_ERROR, STATUS_FAIL,
-                            STATUS_PASS, STATUS_WARNING)
+from dqf.core.enums import (
+    SEVERITY_CRITICAL,
+    SEVERITY_ERROR,
+    SEVERITY_INFO,
+    SEVERITY_WARNING,
+    STATUS_ERROR,
+    STATUS_FAIL,
+    STATUS_PASS,
+    STATUS_WARNING,
+)
 
 
 @dataclass
@@ -29,8 +36,8 @@ class CheckIssue:
 
     severity: str
     message: str
-    location: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    location: str | None = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass
@@ -50,17 +57,15 @@ class CheckResult:
     check_name: str = "UnknownCheck"
     status: str = "PASS"
     message: str = ""
-    issues: List[CheckIssue] = field(default_factory=list)
-    details: Optional[Dict[str, Any]] = None
+    issues: list[CheckIssue] = field(default_factory=list)
+    details: dict[str, Any] | None = None
     severity: str = "INFO"
 
     def __post_init__(self):
         """Validate result after initialization."""
         valid_statuses = {STATUS_PASS, STATUS_WARNING, STATUS_FAIL, STATUS_ERROR}
         if self.status not in valid_statuses:
-            raise ValueError(
-                f"Invalid status '{self.status}'. Must be one of {valid_statuses}"
-            )
+            raise ValueError(f"Invalid status '{self.status}'. Must be one of {valid_statuses}")
 
         valid_severities = {
             SEVERITY_INFO,
@@ -87,8 +92,8 @@ class CheckResult:
         self,
         severity: str,
         message: str,
-        location: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        location: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """
         Add an issue to this result.
@@ -131,9 +136,9 @@ class BaseCheck(ABC):
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -204,8 +209,8 @@ class BaseCheck(ABC):
         status: str,
         message: str,
         severity: str = "INFO",
-        details: Optional[Dict[str, Any]] = None,
-        issues: Optional[List[CheckIssue]] = None,
+        details: dict[str, Any] | None = None,
+        issues: list[CheckIssue] | None = None,
     ) -> CheckResult:
         """
         Helper to create a CheckResult with consistent formatting.
@@ -237,9 +242,7 @@ class BaseCheck(ABC):
             issues=issues or [],
         )
 
-    def _create_pass_result(
-        self, message: str = "Check passed", **kwargs
-    ) -> CheckResult:
+    def _create_pass_result(self, message: str = "Check passed", **kwargs) -> CheckResult:
         """
         Convenience method to create a passing result.
 
@@ -300,7 +303,7 @@ class BaseCheck(ABC):
         )
 
     def _create_error_result(
-        self, message: str, exception: Optional[Exception] = None, **kwargs
+        self, message: str, exception: Exception | None = None, **kwargs
     ) -> CheckResult:
         """
         Convenience method to create an error result (for exceptions).
@@ -327,9 +330,7 @@ class BaseCheck(ABC):
             **kwargs,
         )
 
-    def _validate_ohlcv_columns(
-        self, df: pd.DataFrame, required: Optional[List[str]] = None
-    ) -> None:
+    def _validate_ohlcv_columns(self, df: pd.DataFrame, required: list[str] | None = None) -> None:
         """
         Validate that DataFrame has required OHLCV columns.
 
@@ -348,8 +349,7 @@ class BaseCheck(ABC):
 
         if missing:
             raise ValueError(
-                f"Missing required OHLCV columns: {missing}. "
-                f"Found columns: {list(df.columns)}"
+                f"Missing required OHLCV columns: {missing}. " f"Found columns: {list(df.columns)}"
             )
 
     def _validate_datetime_index(self, df: pd.DataFrame) -> None:
@@ -367,6 +367,4 @@ class BaseCheck(ABC):
 
     def __repr__(self) -> str:
         """String representation of check."""
-        return (
-            f"{self.__class__.__name__}(id='{self.check_id}', name='{self.check_name}')"
-        )
+        return f"{self.__class__.__name__}(id='{self.check_id}', name='{self.check_name}')"
