@@ -1,7 +1,11 @@
 # DQF Architecture
 
-**Version**: 1.0.0  
-**Last Updated**: January 12, 2026
+**Version**: 1.1.0  
+**Last Updated**: 2026-04-06
+
+> **Design decisions are now governed by [DQF_SPECIFICATION.md](./DQF_SPECIFICATION.md).**
+> This document covers implementation rationale and internal component design.
+> In case of conflict, DQF_SPECIFICATION.md takes precedence.
 
 ---
 
