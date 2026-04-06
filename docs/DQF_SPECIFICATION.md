@@ -1,7 +1,7 @@
 # DQF Specification v1.1
 **Status**: Canonical — supersedes ARCHITECTURE.md for design decisions  
 **Last Updated**: 2026-04-06  
-**Authors**: Andrei Dinga-Reassi, Claude (Anthropic)
+**Authors**: dravitch, Claude (Anthropic)
 
 ---
 
