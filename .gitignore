@@ -35,6 +35,9 @@ logs/
 # Generated work (provenance, reports)
 _work/
 
+# Personal workflow scripts (author-specific, not part of the package)
+scripts/local/
+
 # Secrets
 .env
 *.key

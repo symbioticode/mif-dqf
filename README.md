@@ -1,6 +1,6 @@
 # DQF - Data Quality Framework
 
-[![Tests](https://img.shields.io/badge/tests-104%2F104%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
+[![Tests](https://img.shields.io/badge/tests-89%2F89%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
 [![Coverage](https://img.shields.io/badge/coverage-77%25-yellow)](https://github.com/symbioticode/mif-dqf)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -412,14 +412,16 @@ report = validator.validate(data)  # Now runs 8 checks
 - **Deterministic**: Same data → Same results (always)
 - **Transparent**: Full provenance tracking
 - **Extensible**: Add custom checks easily
-- **Production-Ready**: 104/104 tests passing
+- **Production-Ready**: 89/89 tests passing
 
 ---
 
 ## 📖 Documentation
 
-- **[API Reference](docs/API.md)**: Complete API documentation (3,500+ lines)
+- **[DQF Specification](docs/DQF_SPECIFICATION.md)**: Canonical architectural decisions (v1.1 design)
+- **[API Reference](docs/API.md)**: Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)**: Design patterns and technical decisions
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues and solutions
 - **[Examples](examples/)**: 4 complete examples (basic, config, batch, custom)
 
 ---
@@ -428,7 +430,7 @@ report = validator.validate(data)  # Now runs 8 checks
 
 ```bash
 # Run all tests
-pytest tests/ -v                    # 104/104 passing
+pytest tests/ -v                    # 89/89 passing
 
 # Coverage
 pytest tests/ --cov=dqf            # 77% coverage
@@ -436,6 +438,9 @@ pytest tests/ --cov=dqf            # 77% coverage
 # Linting
 ruff check dqf tests examples      # 0 errors
 black dqf tests examples --check   # All formatted
+
+# Baseline validation
+python scripts/baseline.py         # PASS — ready for MIF
 
 # Examples
 python examples/01_basic_validation.py    # ✅ Works
@@ -445,7 +450,7 @@ python examples/04_custom_check.py        # ✅ Works
 ```
 
 **Quality Metrics**:
-- **104 tests** (96 unit + 8 integration)
+- **89 tests** (80 unit + 9 integration)
 - **77% coverage** (production code)
 - **0 warnings** (clean)
 - **0 linting errors** (ruff, black, isort)
@@ -457,16 +462,19 @@ python examples/04_custom_check.py        # ✅ Works
 ```
 dqf/
 ├── dqf/                          # Source code
-│   ├── checks/                  # The 7 checks
+│   ├── checks/                  # The 7 checks (v1.0.0)
 │   ├── core/                    # Config, Validator, Report
-│   └── utils/                   # Calendar, Provenance, Logger
-├── tests/                       # Test suite (104 tests)
+│   └── utils/                   # Calendar utilities
+├── tests/                       # Test suite (89 tests)
 ├── examples/                    # Complete examples (4)
-├── docs/                        # Documentation
-│   ├── API.md                   # API reference (3,500+ lines)
-│   └── ARCHITECTURE.md          # Design & patterns
+├── docs/
+│   ├── DQF_SPECIFICATION.md     # Canonical architecture (v1.1 design)
+│   ├── API.md                   # API reference
+│   ├── ARCHITECTURE.md          # Design & patterns
+│   └── TROUBLESHOOTING.md       # Common issues
+├── scripts/
+│   └── baseline.py              # Baseline validator
 ├── pyproject.toml               # Package metadata
-├── README.md                    # This file
 └── LICENSE                      # MIT License
 ```
 
@@ -527,41 +535,49 @@ Total validation time: ~1.2s
 ## 🗺️ Roadmap
 
 ### v1.0.0 (Current) ✅
-- ✅ 7 comprehensive checks
+- ✅ 7 checks (Source, Integrity, Calendar, Forward-Fill, Index, Sanity, Logging)
 - ✅ Certified clean data output
 - ✅ Complete provenance tracking
-- ✅ 104/104 tests passing
+- ✅ 89/89 tests passing
 
-### v1.1.0 (March 2026)
-- [ ] Enabled filtering (selective checks)
-- [ ] Performance metrics in reports
-- [ ] Parallel check execution
+### v1.1.0 — Architectural redesign ([spec](docs/DQF_SPECIFICATION.md))
+- [ ] Two operational modes: **Certification** (strict, deterministic) vs **Diagnostic** (advisory)
+- [ ] Check reclassification: MIF-CORE (non-bypassable) vs MIF-ADVISORY (configurable)
+- [ ] PROD envelope replaces Check 7 (Ed25519 identity + signature)
+- [ ] Sanity tests (Check 6) migrated to MIF Layer 1
+- [ ] MIF Purity Index (MPI): 0–100 score measuring intervention level
+- [ ] MIF-UID: `SHA-256(data_hash + dqf_version)` for reproducible certification
 
-### v1.2.0 (April 2026)
-- [ ] Active data cleaning (optional)
-- [ ] Auto-repair strategies
-- [ ] Cleaning diff reports
+### v1.2.0 — Active cleaning
+- [ ] Optional data transformation in Certification Mode
+- [ ] Deterministic, versioned cleaning algorithm
+- [ ] Before/after diff reports
 
-### v2.0.0 (Q2 2026)
-- [ ] DAL integration (Data Abstraction Layer)
-- [ ] Automatic validation on fetch
-- [ ] Complete provenance chain
+### v2.0.0 — MIF integration
+- [ ] DAL integration (`get_certified_data()` / `get_raw_data()`)
+- [ ] `precondition_gate` for MIF scoring pipeline
+- [ ] Full provenance chain: source → DQF → MIF
 
 ---
 
 ## 🤝 Ecosystem
 
-DQF is part of the **MIF Ecosystem**:
+DQF is the foundational layer of the **MIF (Metric Integrity Framework)** ecosystem.
 
 ```
-MIF (Layers 1-5) = Metric certification
-    ↑
-DAL (Layer 0) = Multi-source abstraction [Q2 2026]
-    ↑
-DQF (Layer -1) = Data purification [YOU ARE HERE]
-    ↑
-Raw Sources (Yahoo, Binance, etc.)
+MIF Layers 1–5  = Metric certification & strategy validation
+       ↑           (score capped if DQF precondition fails)
+     DAL         = Multi-source data abstraction [planned]
+       ↑
+     DQF         = Data quality gate [YOU ARE HERE]
+       ↑
+Raw Sources     = Yahoo Finance, Binance, Kraken, etc.
 ```
+
+DQF acts as a `precondition_gate`: if data does not pass DQF, downstream MIF
+scores are bounded regardless of metric quality. See
+[DQF_SPECIFICATION.md](docs/DQF_SPECIFICATION.md) for the full integration
+contract.
 
 ---
 
