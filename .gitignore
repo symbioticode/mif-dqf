@@ -32,6 +32,9 @@ results/
 logs/
 *.log
 
+# Generated work (provenance, reports)
+_work/
+
 # Secrets
 .env
 *.key
