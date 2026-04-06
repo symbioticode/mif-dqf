@@ -1,0 +1,262 @@
+
+[andrei@nixos:~]$ rclone listremotes
+GoogleFatCaro:
+
+[andrei@nixos:~]$ rclone config show GoogleFatCaro
+[GoogleFatCaro]
+type = drive
+scope = drive
+token = {"access_token":"ya29.a0AUMWg_KmyUh_XDTbDMMCoyRsyAttv5a5gHC86Pz70wBGRwPo5CuymQ19QiuSaAWcDBGgfimFZ716kE8aI-M6TBuJG30SclonSrbd6JCtFlOpFOQrkb2y-a2xYpJRrAO09adm8pbhmSLuVAF9846MB4ZM4jt0UgNEQ6p_th5x-SeTYs5ajbTd8TqzXJ1dm2JjIC7_mNT1sAaCgYKAZ8SARQSFQHGX2MicVr2HFVOpqVd-VUPtn_4HQ0209","token_type":"Bearer","refresh_token":"1//0561FcmT7npUdCgYIARAAGAUSNwF-L9Irivb3MwrpyMg3sf1TicG_YxeXvFqezJa_gqfTrhhUph3prlBMH9BQkQA8ImpQKr_TKGY","expiry":"2026-01-21T00:27:11.607594837-05:00"}
+team_drive = 
+
+[andrei@nixos:~]$ rclone config show GoogleFatCaro | grep scope
+scope = drive
+
+[andrei@nixos:~]$ rclone ls GoogleFatCaro:Projects --max-depth 1
+    41895 complete_backup_structure.md
+     9169 complete_organization_strategy.md
+     7055 infrastructure_sigma_phi_structure.md
+      966 lean_project.md
+       89 requirements.txt
+     1269 setup.sh
+     1948 setup_project.sh
+ 93228880 toposfin-backup-1766295031.tar.gz
+      357 which_github.sh
+
+[andrei@nixos:~]$ rclone delete GoogleFatCaro:Projects/test.txt --dry-run -vv
+2026/01/21 20:58:03 DEBUG : rclone: Version "v1.69.1" starting with parameters ["/nix/var/nix/profiles/default/bin/rclone" "delete" "GoogleFatCaro:Projects/test.txt" "--dry-run" "-vv"]
+2026/01/21 20:58:03 DEBUG : Creating backend with remote "GoogleFatCaro:Projects/test.txt"
+2026/01/21 20:58:03 DEBUG : Using config file from "/home/andrei/.config/rclone/rclone.conf"
+2026/01/21 20:58:06 DEBUG : Google drive root 'Projects/test.txt': 'root_folder_id = 0AONd8UwsFt-XUk9PVA' - save this in the config to speed up startup
+2026/01/21 20:58:08 DEBUG : Waiting for deletions to finish
+2026/01/21 20:58:08 ERROR : Attempt 1/3 failed with 1 errors and: directory not found
+2026/01/21 20:58:08 DEBUG : Waiting for deletions to finish
+2026/01/21 20:58:08 ERROR : Attempt 2/3 failed with 1 errors and: directory not found
+2026/01/21 20:58:08 DEBUG : Waiting for deletions to finish
+2026/01/21 20:58:09 ERROR : Attempt 3/3 failed with 1 errors and: directory not found
+2026/01/21 20:58:09 DEBUG : 5 go routines active
+2026/01/21 20:58:09 NOTICE: Failed to delete: directory not found
+
+[andrei@nixos:~]$ which rclone
+/nix/var/nix/profiles/default/bin/rclone
+
+[andrei@nixos:~]$ sudo systemctl show-environment
+[sudo] Mot de passe de andrei : 
+LANG=fr_CA.UTF-8
+PATH=/nix/store/kiplbb6yv7rmjf21hf9ky01b9kmgmnqn-systemd-257.10/bin/
+
+[andrei@nixos:~]$ sudo systemd-run --user --unit=test-rclone.service /bin/bash -c 'which rclone'
+Failed to connect to user scope bus via local transport: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)
+
+[andrei@nixos:~]$ journalctl --user -u test-rclone.service
+-- No entries --
+
+
+
+[andrei@nixos:~]$ journalctl --user -u test-rclone.service
+-- No entries --
+
+[andrei@nixos:~]$ find ~/Projects -xtype l 2>/dev/null
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest
+/home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest
+/home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest
+/home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest
+/home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest
+/home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest
+/home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest
+/home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest
+/home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python3
+/home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python3.12
+/home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_123843/.direnv/flake-profile-4-link
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_123843/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260117_151154/.direnv/flake-profile-4-link
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260117_151154/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_200700/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_200700/.direnv/flake-profile-1-link
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_204807/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_204807/.direnv/flake-profile-1-link
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/.direnv/flake-profile-4-link
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260111_224633/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260111_224633/.direnv/flake-profile-1-link
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/.direnv/flake-profile
+/home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/.direnv/flake-profile-1-link
+
+[andrei@nixos:~]$ find ~/Projects -xtype l -ls 2>/dev/null
+  3807464      0 lrwxrwxrwx   1 andrei   users           4 oct 28 22:14 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest -> v1.0
+  3807526      0 lrwxrwxrwx   1 andrei   users           4 oct 28 22:14 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest -> v1.0
+  3807465      0 lrwxrwxrwx   1 andrei   users           4 oct 28 22:14 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest -> v1.0
+  3807467      0 lrwxrwxrwx   1 andrei   users           4 oct 14 07:34 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest -> v1.0
+  3830171      0 lrwxrwxrwx   1 andrei   users           4 oct 24 19:38 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics\ (Copie)/vol_ratio/latest -> v1.0
+  3830295      0 lrwxrwxrwx   1 andrei   users           4 oct 24 19:38 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics\ (Copie)/alpha_stability/latest -> v1.0
+  3830250      0 lrwxrwxrwx   1 andrei   users           4 oct 24 19:38 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics\ (Copie)/bound_coherence/latest -> v1.0
+  3838587      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics/vol_ratio/latest -> v1.0
+  3838683      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics/bound_coherence/latest -> v1.0
+  3838790      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics/spectral_score/latest -> v1.0
+  4325529      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics\ (Copie)/vol_ratio/latest -> v1.0
+  4325651      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics\ (Copie)/alpha_stability/latest -> v1.0
+  4325607      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics\ (Copie)/bound_coherence/latest -> v1.0
+  3831366      0 lrwxrwxrwx   1 andrei   users           6 oct 29 21:07 /home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python3 -> python
+  3831367      0 lrwxrwxrwx   1 andrei   users           6 oct 29 21:07 /home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python3.12 -> python
+  3831365      4 lrwxrwxrwx   1 andrei   users          70 oct 29 21:07 /home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python -> /nix/store/vxl8pzgkkw8vdb4agzwm58imrfclmfrx-python3-3.12.11/bin/python
+  6301724      0 lrwxrwxrwx   1 andrei   users          57 jan 15 21:48 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_123843/.direnv/flake-profile-4-link -> /nix/store/0ic6nrpgijn8aqyavnqsrh0wjkmz8r6x-nix-shell-env
+  6301723      0 lrwxrwxrwx   1 andrei   users          20 jan 15 21:49 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_123843/.direnv/flake-profile -> flake-profile-4-link
+  6306138      0 lrwxrwxrwx   1 andrei   users          57 jan 15 21:48 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260117_151154/.direnv/flake-profile-4-link -> /nix/store/0ic6nrpgijn8aqyavnqsrh0wjkmz8r6x-nix-shell-env
+  6306137      0 lrwxrwxrwx   1 andrei   users          20 jan 15 21:49 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260117_151154/.direnv/flake-profile -> flake-profile-4-link
+  6302996      0 lrwxrwxrwx   1 andrei   users          20 jan 12 20:06 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_200700/.direnv/flake-profile -> flake-profile-1-link
+  6302997      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_200700/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+  6304364      0 lrwxrwxrwx   1 andrei   users          20 jan 12 20:06 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_204807/.direnv/flake-profile -> flake-profile-1-link
+  6304365      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_204807/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+  6301844      0 lrwxrwxrwx   1 andrei   users          57 jan 15 21:48 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/.direnv/flake-profile-4-link -> /nix/store/0ic6nrpgijn8aqyavnqsrh0wjkmz8r6x-nix-shell-env
+  6301843      0 lrwxrwxrwx   1 andrei   users          20 jan 15 21:49 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/.direnv/flake-profile -> flake-profile-4-link
+  6180307      0 lrwxrwxrwx   1 andrei   users          20 jan 11 15:27 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260111_224633/.direnv/flake-profile -> flake-profile-1-link
+  6180308      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260111_224633/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+  5259230      0 lrwxrwxrwx   1 andrei   users          20 jan  9 14:55 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/.direnv/flake-profile -> flake-profile-1-link
+  5259231      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+
+[andrei@nixos:~]$ find ~/Projects -xtype l -ls 2>/dev/null
+  3807464      0 lrwxrwxrwx   1 andrei   users           4 oct 28 22:14 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest -> v1.0
+  3807526      0 lrwxrwxrwx   1 andrei   users           4 oct 28 22:14 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest -> v1.0
+  3807465      0 lrwxrwxrwx   1 andrei   users           4 oct 28 22:14 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest -> v1.0
+  3807467      0 lrwxrwxrwx   1 andrei   users           4 oct 14 07:34 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest -> v1.0
+  3830171      0 lrwxrwxrwx   1 andrei   users           4 oct 24 19:38 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics\ (Copie)/vol_ratio/latest -> v1.0
+  3830295      0 lrwxrwxrwx   1 andrei   users           4 oct 24 19:38 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics\ (Copie)/alpha_stability/latest -> v1.0
+  3830250      0 lrwxrwxrwx   1 andrei   users           4 oct 24 19:38 /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics\ (Copie)/bound_coherence/latest -> v1.0
+  3838587      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics/vol_ratio/latest -> v1.0
+  3838683      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics/bound_coherence/latest -> v1.0
+  3838790      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics/spectral_score/latest -> v1.0
+  4325529      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics\ (Copie)/vol_ratio/latest -> v1.0
+  4325651      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics\ (Copie)/alpha_stability/latest -> v1.0
+  4325607      0 lrwxrwxrwx   1 andrei   users           4 oct 28 21:46 /home/andrei/Projects/01_QAAF/01_QAAF\ (Copie\ 2)/qaaf_v2.0/metrics\ (Copie)/bound_coherence/latest -> v1.0
+  3831366      0 lrwxrwxrwx   1 andrei   users           6 oct 29 21:07 /home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python3 -> python
+  3831367      0 lrwxrwxrwx   1 andrei   users           6 oct 29 21:07 /home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python3.12 -> python
+  3831365      4 lrwxrwxrwx   1 andrei   users          70 oct 29 21:07 /home/andrei/Projects/09_MIF/BRAINS/daif/daic-portfolio/venv/bin/python -> /nix/store/vxl8pzgkkw8vdb4agzwm58imrfclmfrx-python3-3.12.11/bin/python
+  6301724      0 lrwxrwxrwx   1 andrei   users          57 jan 15 21:48 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_123843/.direnv/flake-profile-4-link -> /nix/store/0ic6nrpgijn8aqyavnqsrh0wjkmz8r6x-nix-shell-env
+  6301723      0 lrwxrwxrwx   1 andrei   users          20 jan 15 21:49 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_123843/.direnv/flake-profile -> flake-profile-4-link
+  6306138      0 lrwxrwxrwx   1 andrei   users          57 jan 15 21:48 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260117_151154/.direnv/flake-profile-4-link -> /nix/store/0ic6nrpgijn8aqyavnqsrh0wjkmz8r6x-nix-shell-env
+  6306137      0 lrwxrwxrwx   1 andrei   users          20 jan 15 21:49 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260117_151154/.direnv/flake-profile -> flake-profile-4-link
+  6302996      0 lrwxrwxrwx   1 andrei   users          20 jan 12 20:06 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_200700/.direnv/flake-profile -> flake-profile-1-link
+  6302997      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_200700/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+  6304364      0 lrwxrwxrwx   1 andrei   users          20 jan 12 20:06 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_204807/.direnv/flake-profile -> flake-profile-1-link
+  6304365      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260112_204807/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+  6301844      0 lrwxrwxrwx   1 andrei   users          57 jan 15 21:48 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/.direnv/flake-profile-4-link -> /nix/store/0ic6nrpgijn8aqyavnqsrh0wjkmz8r6x-nix-shell-env
+  6301843      0 lrwxrwxrwx   1 andrei   users          20 jan 15 21:49 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/.direnv/flake-profile -> flake-profile-4-link
+  6180307      0 lrwxrwxrwx   1 andrei   users          20 jan 11 15:27 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260111_224633/.direnv/flake-profile -> flake-profile-1-link
+  6180308      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.9.0_20260111_224633/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+  5259230      0 lrwxrwxrwx   1 andrei   users          20 jan  9 14:55 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/.direnv/flake-profile -> flake-profile-1-link
+  5259231      0 lrwxrwxrwx   1 andrei   users          57 jan  6 21:24 /home/andrei/Projects/09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/.direnv/flake-profile-1-link -> /nix/store/79vfpcnx685h0i6c1qiwk9wqlfgjvzi0-nix-shell-env
+
+[andrei@nixos:~]$ 
+
+
+[andrei@nixos:~]$ rclone config reconnect GoogleFatCaro:
+Already have a token - refresh?
+y) Yes (default)
+n) No
+y/n> y
+
+Use web browser to automatically authenticate rclone with remote?
+ * Say Y if the machine running rclone has a web browser you can use
+ * Say N if running rclone on a (remote) machine without web browser access
+If not sure try Y. If Y failed, try N.
+
+y) Yes (default)
+n) No
+y/n> y
+
+
+
+rclone veut accéder à votre compte Google
+fatcaroline@gmail.com
+rclone a déjà certains droits d'accès
+Affichez les
+auxquels rclone a certains droits d'accès.
+Assurez-vous de faire confiance à rclone
+Découvrir pourquoi vous ne voyez pas de liens vers la politique de confidentialité ou les conditions d'utilisation de rclone
+
+Success!
+
+
+All done. Please go back to rclone.
+
+
+2026/01/21 21:01:26 NOTICE: Make sure your Redirect URL is set to "http://127.0.0.1:53682/" in your custom config.
+2026/01/21 21:01:26 NOTICE: If your browser doesn't open automatically go to the following link: http://127.0.0.1:53682/auth?state=QkxqtHnWF-qbgohGgFoENw
+2026/01/21 21:01:26 NOTICE: Log in and authorize rclone for access
+2026/01/21 21:01:26 NOTICE: Waiting for code...
+2026/01/21 21:01:51 NOTICE: Got code
+Configure this as a Shared Drive (Team Drive)?
+
+y) Yes
+n) No (default)
+y/n> n
+
+
+[andrei@nixos:~]$ echo "test" | rclone rcat GoogleFatCaro:test.txt
+
+[andrei@nixos:~]$ rclone delete GoogleFatCaro:test.txt -vv
+2026/01/21 21:03:24 DEBUG : rclone: Version "v1.69.1" starting with parameters ["/nix/var/nix/profiles/default/bin/rclone" "delete" "GoogleFatCaro:test.txt" "-vv"]
+2026/01/21 21:03:24 DEBUG : Creating backend with remote "GoogleFatCaro:test.txt"
+2026/01/21 21:03:24 DEBUG : Using config file from "/home/andrei/.config/rclone/rclone.conf"
+2026/01/21 21:03:26 DEBUG : Google drive root 'test.txt': 'root_folder_id = 0AONd8UwsFt-XUk9PVA' - save this in the config to speed up startup
+2026/01/21 21:03:26 DEBUG : fs cache: renaming child cache item "GoogleFatCaro:test.txt" to be canonical for parent "GoogleFatCaro:"
+2026/01/21 21:03:26 DEBUG : Waiting for deletions to finish
+2026/01/21 21:03:27 DEBUG : Découvrez votre profil d'investisseur : No export formats found for "application/vnd.google-apps.form"
+2026/01/21 21:03:27 DEBUG : Copie de BTC-Heston-Pricing-Model.mp4: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Copie de BTC-Heston-Pricing-Model.mp4: Excluded
+2026/01/21 21:03:27 DEBUG : Projects: Excluded
+2026/01/21 21:03:27 DEBUG : IPAM template.xlsx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : IPAM template.xlsx: Excluded
+2026/01/21 21:03:27 DEBUG : Lab: Excluded
+2026/01/21 21:03:27 DEBUG : Knowledge: Excluded
+2026/01/21 21:03:27 DEBUG : Plateforme de trading - Notes #1.docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Plateforme de trading - Notes #1.docx: Excluded
+2026/01/21 21:03:27 DEBUG : Framework de Finance Symbiotique Corrigé: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Framework de Finance Symbiotique Corrigé: Excluded
+2026/01/21 21:03:27 DEBUG : Aid 2025: Excluded
+2026/01/21 21:03:27 DEBUG : Backup-Samira-27Mai2025: Excluded
+2026/01/21 21:03:27 DEBUG : Theorie des portefeuilles Vivants - Complete .docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Theorie des portefeuilles Vivants - Complete .docx: Excluded
+2026/01/21 21:03:27 DEBUG : Feuille de calcul sans titre.xlsx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Feuille de calcul sans titre.xlsx: Excluded
+2026/01/21 21:03:27 DEBUG : Theorie des portefeuilles Vivants - Complete .docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Theorie des portefeuilles Vivants - Complete .docx: Excluded
+2026/01/21 21:03:27 DEBUG : alloy_btc_paxg_quickstart(2).txt: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : alloy_btc_paxg_quickstart(2).txt: Excluded
+2026/01/21 21:03:27 DEBUG : ALLOY FOREX  - Guide utilisateur.docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : ALLOY FOREX  - Guide utilisateur.docx: Excluded
+2026/01/21 21:03:27 DEBUG : FINIX - Document de Formalisation du Projet v2.0.docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : FINIX - Document de Formalisation du Projet v2.0.docx: Excluded
+2026/01/21 21:03:27 DEBUG : FINIX: Excluded
+2026/01/21 21:03:27 DEBUG : Thami Kabbaj - Portefeuille Antifragile 2.0 - Masterclass 11 Mai 2025: Excluded
+2026/01/21 21:03:27 DEBUG : QAAF: Excluded
+2026/01/21 21:03:27 DEBUG : proton: Excluded
+2026/01/21 21:03:27 DEBUG : spectro: Excluded
+2026/01/21 21:03:27 DEBUG : QUANT.zip: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : QUANT.zip: Excluded
+2026/01/21 21:03:27 DEBUG : Cryto Palabres Files: Excluded
+2026/01/21 21:03:27 DEBUG : Pourquoi la Majorité Perd en Bourse - Etude complete.docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Pourquoi la Majorité Perd en Bourse - Etude complete.docx: Excluded
+2026/01/21 21:03:27 DEBUG : Pourquoi la Majorité Perd en Bourse ?  Synthese.docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Pourquoi la Majorité Perd en Bourse ?  Synthese.docx: Excluded
+2026/01/21 21:03:27 DEBUG : ALLOY BTC-PAXG  - Notes.docx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : ALLOY BTC-PAXG  - Notes.docx: Excluded
+2026/01/21 21:03:27 DEBUG : backtest: Excluded
+2026/01/21 21:03:27 DEBUG : Colab Notebooks: Excluded
+2026/01/21 21:03:27 DEBUG : 1660 Super Hynix Bios to 34MH: Excluded
+2026/01/21 21:03:27 DEBUG : Red Panda Mining Hashrate Testing.xlsx: Excluded (FilesFrom Filter)
+2026/01/21 21:03:27 DEBUG : Red Panda Mining Hashrate Testing.xlsx: Excluded
+2026/01/21 21:03:27 DEBUG : Brouillon: Excluded
+2026/01/21 21:03:28 INFO  : test.txt: Deleted
+2026/01/21 21:03:28 DEBUG : 5 go routines active
+
+[andrei@nixos:~]$ echo $?
+0
+
+[andrei@nixos:~]$ 

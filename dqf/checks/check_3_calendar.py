@@ -4,7 +4,7 @@ Check 3: Calendar Alignment.
 Validates calendar consistency and timezone handling.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -23,16 +23,16 @@ class CalendarAlignmentCheck(BaseCheck):
     - Frequency is regular
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Calendar Alignment check."""
         super().__init__(check_id="check_3_calendar", check_name="Calendar Alignment")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """

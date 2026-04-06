@@ -1,0 +1,1174 @@
+Tu viens de franchir une étape importante :  
+**le backup local fonctionne parfaitement**, le monitoring fonctionne, le snapshot fonctionne, et ton disque externe est bien monté.  
+C’est exactement ce que tu voulais.
+
+Maintenant, il reste **un seul problème** :  
+👉 **la synchronisation Cloud échoue avec rclone**.
+
+Et la bonne nouvelle, c’est que ton log rclone est extrêmement clair.  
+On peut diagnostiquer précisément ce qui se passe.
+
+---
+
+# 🎯 **Diagnostic immédiat : rclone ne peut pas supprimer sur Google Drive**
+
+Les erreurs :
+
+```
+not deleting files as there were IO errors
+not deleting directories as there were IO errors
+Attempt 3/3 failed with 14 errors
+```
+
+Et surtout :
+
+```
+rclone not found
+```
+
+dans ton backup-monitor.
+
+Ces deux signaux combinés indiquent :
+
+## ✔️ 1. rclone n’est pas installé dans ton PATH (ou pas exécutable)
+Ton backup-monitor te dit :
+
+```
+Cloud: ❌ rclone not found
+```
+
+Donc :
+
+- soit rclone n’est pas installé  
+- soit il n’est pas dans `$PATH`  
+- soit ton script l’appelle avec un chemin incorrect  
+
+**Mais** ton script `sync-projects.sh` arrive quand même à lancer rclone,  
+donc il est installé quelque part, mais pas dans l’environnement du monitor.
+
+---
+
+## ✔️ 2. rclone n’a pas les permissions pour supprimer sur Google Drive
+
+Google Drive impose des règles strictes :
+
+- si ton remote est configuré en **read-only**, rclone peut copier mais pas supprimer  
+- si ton token OAuth a expiré, rclone peut lire mais pas supprimer  
+- si ton remote n’a pas `scope = drive` ou `drive.file`, tu ne peux pas supprimer  
+- si tu utilises un service account sans droits, suppression impossible  
+- si tu synchronises vers un dossier partagé sans droits d’édition, suppression impossible  
+
+Et rclone réagit exactement comme ça :
+
+```
+not deleting files as there were IO errors
+```
+
+Ce message est typique d’un **problème de permission Google Drive**.
+
+---
+
+# 🧠 **Conclusion : ton backup Cloud échoue pour deux raisons distinctes**
+
+## 1. **backup-monitor.py ne trouve pas rclone**
+→ problème de PATH  
+→ facile à corriger
+
+## 2. **rclone ne peut pas supprimer sur Google Drive**
+→ problème de permissions OAuth / scope / remote  
+→ facile à corriger aussi
+
+---
+
+# 🛠️ **Étape 1 — Vérifier où est installé rclone**
+
+Exécute :
+
+```
+which rclone
+```
+
+Si vide → rclone n’est pas installé.
+
+Sur NixOS :
+
+```
+nix-shell -p rclone
+```
+
+ou mieux, dans ton `configuration.nix` :
+
+```nix
+environment.systemPackages = [
+  pkgs.rclone
+];
+```
+
+---
+
+# 🛠️ **Étape 2 — Vérifier ton remote Google Drive**
+
+Exécute :
+
+```
+rclone config show anthill
+```
+
+ou le nom de ton remote.
+
+Tu dois voir :
+
+```
+type = drive
+scope = drive
+token = {"access_token": ...}
+```
+
+Si tu vois :
+
+```
+scope = drive.readonly
+```
+
+→ **impossible de supprimer**  
+→ c’est exactement ton erreur
+
+Si tu vois :
+
+```
+token = expired
+```
+
+→ rclone peut lire mais pas écrire
+
+---
+
+# 🛠️ **Étape 3 — Tester la suppression manuelle**
+
+Exécute :
+
+```
+rclone delete anthill:Projects/test.txt -vv
+```
+
+Si tu obtiens :
+
+```
+403 insufficient permissions
+```
+
+→ bingo, c’est bien un problème de droits Google Drive.
+
+---
+
+# 🛠️ **Étape 4 — Régénérer le token OAuth**
+
+Exécute :
+
+```
+rclone config
+```
+
+Puis :
+
+- choisir ton remote  
+- choisir `Edit`  
+- choisir `Yes` pour re-authentifier  
+- ouvrir le lien dans ton navigateur  
+- accepter les permissions Google Drive complètes  
+
+Assure-toi de choisir :
+
+```
+scope = drive
+```
+
+et non :
+
+```
+drive.readonly
+```
+
+---
+
+# 🛠️ **Étape 5 — Vérifier que ton script utilise bien le bon remote**
+
+Dans `sync-projects.sh`, tu dois avoir quelque chose comme :
+
+```
+rclone sync "$SRC" "anthill:Projects" --delete-during ...
+```
+
+Assure-toi que :
+
+- le remote s’appelle bien `anthill`  
+- le dossier existe  
+- tu as les droits d’écriture dessus  
+
+---
+
+# 🎉 **Après correction, ton backup Cloud fonctionnera comme ton backup local**
+
+Tu obtiendras :
+
+```
+Cloud:  ✅  Dernière: 1m
+         Backup completed in XXs
+```
+
+Et ton monitoring affichera :
+
+```
+Local:  ✅
+Cloud:  ✅
+```
+
+---
+
+
+-------------------------------------------------------------------------------------
+
+Parfait Andrei — je vais analyser **en profondeur** ton script `sync-projects_v2.sh` *et* les logs rclone que tu m’as fournis.  
+L’objectif : **identifier précisément pourquoi la synchronisation Cloud échoue**, et te donner une solution fiable, reproductible, et sans ambiguïté.
+
+Je vais procéder comme un ingénieur SRE :  
+1) Analyse du script  
+2) Analyse des logs rclone  
+3) Diagnostic exact  
+4) Solutions concrètes  
+5) Vérifications finales
+
+---
+
+# 🧩 1. **Analyse du script `sync-projects_v2.sh`**
+
+Ton script est propre, structuré, et bien pensé.  
+Voici les points importants :
+
+### ✔️ Remote utilisé
+```
+REMOTE="GoogleFatCaro"
+```
+
+Donc ton rclone sync fait :
+
+```
+rclone sync "$src" "GoogleFatCaro:$dest"
+```
+
+### ✔️ Options rclone
+```
+--copy-links
+--filter-from "$BACKUP_IGNORE"
+--delete-excluded
+--progress
+--transfers 4
+--checkers 8
+```
+
+Ces options sont correctes.
+
+### ✔️ Le script gère bien les erreurs
+Il utilise :
+
+```
+if rclone sync ...; then
+    ...
+else
+    log "❌ Échec sync"
+fi
+```
+
+Donc le script lui-même n’est pas en cause.
+
+---
+
+# 🧩 2. **Analyse des logs rclone**
+
+Tu m’as donné ceci :
+
+```
+ERROR : Google drive root 'Projects': not deleting files as there were IO errors
+ERROR : Attempt 3/3 failed with 14 errors and: not deleting files as there were IO errors
+```
+
+Et aussi :
+
+```
+rclone not found
+```
+
+dans le backup-monitor.
+
+### Ces deux signaux sont **cruciaux**.
+
+---
+
+# 🧠 3. **Diagnostic exact**
+
+## 🎯 **Problème A — rclone n’est pas dans ton PATH pour certains scripts**
+
+Ton backup-monitor dit :
+
+```
+Cloud: ❌ rclone not found
+```
+
+Mais ton sync-projects.sh arrive à lancer rclone.
+
+Donc :
+
+- rclone est installé  
+- mais pas dans le PATH de certains environnements (cron, systemd, shell non interactif)
+
+**C’est un problème de PATH, pas de rclone.**
+
+---
+
+## 🎯 **Problème B — rclone n’a PAS les permissions pour supprimer sur Google Drive**
+
+Les erreurs :
+
+```
+not deleting files as there were IO errors
+```
+
+sont typiques de :
+
+### ❌ Token OAuth expiré  
+### ❌ Scope insuffisant (drive.readonly)  
+### ❌ Remote configuré en "drive.file"  
+### ❌ Dossier partagé sans droits d’édition  
+### ❌ Service account sans permission  
+### ❌ Google Drive rate limit (rare mais possible)
+
+Et surtout :
+
+### ❌ Google Drive refuse la suppression → rclone refuse de continuer
+
+C’est exactement ce que tu vois :
+
+```
+not deleting files as there were IO errors
+```
+
+---
+
+# 🧠 4. **Conclusion : ton problème Cloud = 2 causes distinctes**
+
+## ✔️ 1. PATH incorrect → backup-monitor ne trouve pas rclone  
+## ✔️ 2. Permissions Google Drive insuffisantes → rclone ne peut pas supprimer
+
+---
+
+# 🛠️ 5. **Solutions concrètes**
+
+## ✅ **Solution A — Fixer le PATH pour rclone**
+
+Ajoute ceci dans `~/.bashrc` et `~/.profile` :
+
+```
+export PATH="$PATH:/run/current-system/sw/bin"
+```
+
+Sur NixOS, rclone est souvent dans :
+
+```
+/run/current-system/sw/bin/rclone
+```
+
+Ensuite :
+
+```
+source ~/.bashrc
+```
+
+Et teste :
+
+```
+which rclone
+```
+
+---
+
+## ✅ **Solution B — Vérifier ton remote rclone**
+
+Exécute :
+
+```
+rclone config show GoogleFatCaro
+```
+
+Tu dois voir :
+
+```
+type = drive
+scope = drive
+token = {"access_token": ...}
+```
+
+Si tu vois :
+
+```
+scope = drive.readonly
+```
+
+→ **impossible de supprimer**  
+→ c’est exactement ton erreur
+
+Si tu vois :
+
+```
+token = expired
+```
+
+→ rclone peut lire mais pas supprimer
+
+---
+
+## ✅ **Solution C — Régénérer le token OAuth**
+
+Exécute :
+
+```
+rclone config
+```
+
+Puis :
+
+- choisir `GoogleFatCaro`
+- choisir `Edit`
+- choisir `Yes` pour re-authentifier
+- ouvrir le lien dans ton navigateur
+- accepter les permissions Google Drive complètes
+
+Assure-toi de choisir :
+
+```
+scope = drive
+```
+
+et non :
+
+```
+drive.readonly
+```
+
+---
+
+## ✅ **Solution D — Tester la suppression manuelle**
+
+Exécute :
+
+```
+rclone delete GoogleFatCaro:Projects/test.txt -vv
+```
+
+Si tu obtiens :
+
+```
+403 insufficient permissions
+```
+
+→ bingo, c’est bien un problème de droits Google Drive.
+
+---
+
+# 🧪 6. Vérification finale
+
+Après correction :
+
+```
+bash ~/bin/sync-projects.sh
+```
+
+Tu dois obtenir :
+
+```
+Cloud:  ✅  Dernière: 1m
+         Backup completed in XXs
+```
+
+Et ton monitoring affichera :
+
+```
+Local:  ✅
+Cloud:  ✅
+```
+
+---
+
+# 🎉 Résumé clair
+
+Ton script est **parfait**.  
+Le problème vient de **Google Drive**, pas de ton code.
+
+👉 **rclone n’a pas les permissions pour supprimer**  
+👉 **ton token OAuth doit être régénéré**  
+👉 **ton PATH doit être corrigé pour backup-monitor**
+
+Une fois ces deux points corrigés, ton backup Cloud sera aussi fiable que ton backup local.
+
+---
+
+Si tu veux, je peux :
+
+- analyser ton remote rclone ligne par ligne  
+- t’aider à reconfigurer Google Drive  
+- t’aider à corriger ton PATH  
+- t’aider à automatiser le backup Cloud dans systemd  
+- t’aider à intégrer le monitoring dans un dashboard  
+
+Tu veux qu’on inspecte ton remote rclone maintenant.
+
+--------------------------------------------------------------------------------------
+
+[andrei@nixos:~]$ bash ~/bin/sync-projects.sh
+═══════════════════════════════════════════════
+🔄 ANTHILL BACKUP - Synchronisation Cloud
+═══════════════════════════════════════════════
+
+🔍 Vérification des prérequis...
+✅ Prérequis OK
+
+📤 Synchronisation: /home/andrei/Projects → Projects
+2026/01/20 23:27:21 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:26 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:31 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:36 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:41 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:46 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:51 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:27:56 -           0 B / 0 B, -, 0 B/s, ETA -2026/01/20 23:28:01 -           0 B / 0 B, -, 0 B/s, ETA -
+2026/01/20 23:28:04 INFO  : 09_MIF/01-DQF/mif-dqf/.envrc: Updated modification time in destination
+2026/01/20 23:28:04 -     7.456 KiB / 90.372 KiB, 8%, 0 B/s, ETA - (xfr#0/15)
+2026/01/20 23:28:05 INFO  : 09_MIF/01-DQF/mif-dqf/flake.nix: Copied (replaced existing)
+2026/01/20 23:28:05 -     7.456 KiB / 90.372 KiB, 8%, 3.728 KiB/s, ETA 22s (xfr#
+2026/01/20 23:28:05 INFO  : 09_MIF/01-DQF/mif-dqf/pyproject.toml: Copied (new)
+2026/01/20 23:28:05 -     7.456 KiB / 90.372 KiB, 8%, 3.728 KiB/s, ETA 22s (xfr#2026/01/20 23:28:06 -     9.605 KiB / 90.372 KiB, 11%, 2.485 KiB/s, ETA 32s (xfr
+2026/01/20 23:28:06 INFO  : 09_MIF/01-DQF/mif-dqf/test_debug_config.py: Copied (new)
+2026/01/20 23:28:06 -    63.298 KiB / 90.372 KiB, 70%, 15.824 KiB/s, ETA 1s (xfr
+2026/01/20 23:28:08 INFO  : 09_MIF/01-DQF/mif-dqf/test_debug_validator.py: Copied (new)
+2026/01/20 23:28:08 -    63.528 KiB / 90.372 KiB, 70%, 12.659 KiB/s, ETA 2s (xfr
+2026/01/20 23:28:08 INFO  : 09_MIF/01-DQF/mif-dqf/.coverage: Copied (replaced existing)
+2026/01/20 23:28:08 -    63.969 KiB / 90.372 KiB, 71%, 12.659 KiB/s, ETA 2s (xfr
+2026/01/20 23:28:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/.envrc: Copied (new)
+2026/01/20 23:28:09 -    65.023 KiB / 90.372 KiB, 72%, 10.837 KiB/s, ETA 2s (xfr
+2026/01/20 23:28:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/.pre-commit-config.yaml: Copied (new)
+2026/01/20 23:28:09 -    65.023 KiB / 90.372 KiB, 72%, 10.837 KiB/s, ETA 2s (xfr
+2026/01/20 23:28:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/LICENSE: Copied (new)
+2026/01/20 23:28:09 -    65.023 KiB / 90.372 KiB, 72%, 10.837 KiB/s, ETA 2s (xfr2026/01/20 23:28:11 -    85.804 KiB / 90.372 KiB, 95%, 10.725 KiB/s, ETA 0s (xfr
+2026/01/20 23:28:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/flake.nix: Copied (new)
+2026/01/20 23:28:11 -    85.804 KiB / 90.372 KiB, 95%, 10.725 KiB/s, ETA 0s (xfr
+2026/01/20 23:28:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/flake.lock: Copied (new)
+2026/01/20 23:28:11 -    85.804 KiB / 90.372 KiB, 95%, 10.725 KiB/s, ETA 0s (xfr
+2026/01/20 23:28:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/README.md: Copied (new)
+2026/01/20 23:28:11 -    85.804 KiB / 90.372 KiB, 95%, 10.725 KiB/s, ETA 0s (xfr
+2026/01/20 23:28:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/justfile: Copied (new)
+2026/01/20 23:28:11 -    85.804 KiB / 90.372 KiB, 95%, 9.533 KiB/s, ETA 0s
+2026/01/20 23:28:13 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/test_debug_validator.py: Copied (new)
+2026/01/20 23:28:13 -    90.372 KiB / 90.372 KiB, 100%, 8.215 KiB/s, ETA 0s
+2026/01/20 23:28:14 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/test_debug_config.py: Copied (new)
+2026/01/20 23:28:14 -    90.372 KiB / 90.372 KiB, 100%, 8.215 KiB/s, ETA 0s
+2026/01/20 23:28:14 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/pytest.ini: Copied (new)
+2026/01/20 23:28:14 -    90.372 KiB / 90.372 KiB, 100%, 8.215 KiB/s, ETA 0s2026/01/20 23:28:16 -    90.372 KiB / 132.580 KiB, 68%, 6.951 KiB/s, ETA 6s (xfr
+2026/01/20 23:28:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/LICENSE: Copied (new)
+2026/01/20 23:28:19 -   101.642 KiB / 132.650 KiB, 77%, 6.353 KiB/s, ETA 4s (xfr
+2026/01/20 23:28:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/.envrc: Copied (new)
+2026/01/20 23:28:19 -   101.642 KiB / 132.650 KiB, 77%, 6.353 KiB/s, ETA 4s (xfr
+2026/01/20 23:28:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/README.md: Copied (new)
+2026/01/20 23:28:19 -   101.642 KiB / 132.650 KiB, 77%, 6.353 KiB/s, ETA 4s (xfr
+2026/01/20 23:28:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/.pre-commit-config.yaml: Copied (new)
+2026/01/20 23:28:19 -   101.642 KiB / 132.650 KiB, 77%, 6.353 KiB/s, ETA 4s (xfr2026/01/20 23:28:21 -   121.582 KiB / 132.650 KiB, 92%, 5.583 KiB/s, ETA 1s (xfr
+2026/01/20 23:28:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/flake.lock: Copied (new)
+2026/01/20 23:28:22 -   121.582 KiB / 132.650 KiB, 92%, 6.480 KiB/s, ETA 1s (xfr
+2026/01/20 23:28:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/git_sync_to_review.md: Copied (new)
+2026/01/20 23:28:22 -   121.582 KiB / 132.650 KiB, 92%, 6.480 KiB/s, ETA 1s (xfr
+2026/01/20 23:28:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/git_sync_to_review.py: Copied (new)
+2026/01/20 23:28:22 -   121.582 KiB / 132.650 KiB, 92%, 6.480 KiB/s, ETA 1s (xfr
+2026/01/20 23:28:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/flake.nix: Copied (new)
+2026/01/20 23:28:22 -   121.582 KiB / 132.650 KiB, 92%, 6.075 KiB/s, ETA 1s (xfr
+2026/01/20 23:28:24 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/justfile: Copied (new)
+2026/01/20 23:28:24 -   130.431 KiB / 132.650 KiB, 98%, 5.867 KiB/s, ETA 0s (xfr
+2026/01/20 23:28:24 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/pytest.ini: Copied (new)
+2026/01/20 23:28:24 -   132.580 KiB / 132.650 KiB, 100%, 5.867 KiB/s, ETA 0s
+2026/01/20 23:28:25 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/test_debug_validator.py: Copied (new)
+2026/01/20 23:28:25 -   132.580 KiB / 132.650 KiB, 100%, 5.867 KiB/s, ETA 0s
+2026/01/20 23:28:26 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/test_debug_config.py: Copied (new)
+2026/01/20 23:28:26 -   132.580 KiB / 132.650 KiB, 100%, 5.635 KiB/s, ETA 0s2026/01/20 23:28:26 -   132.580 KiB / 132.650 KiB, 100%, 5.635 KiB/s, ETA 0s
+2026/01/20 23:28:28 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/config/default.yaml: Copied (new)
+2026/01/20 23:28:28 -   132.650 KiB / 132.650 KiB, 100%, 4.957 KiB/s, ETA 0s2026/01/20 23:28:31 -   132.721 KiB / 1008.972 KiB, 13%, 4.084 KiB/s, ETA 3m34s 
+2026/01/20 23:28:32 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/config/default.yaml: Copied (new)
+2026/01/20 23:28:32 -   132.721 KiB / 1008.972 KiB, 13%, 3.833 KiB/s, ETA 3m48s 
+2026/01/20 23:28:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/ARCHITECTURE.md: Copied (new)
+2026/01/20 23:28:34 -   216.571 KiB / 1008.972 KiB, 21%, 8.609 KiB/s, ETA 1m32s 
+2026/01/20 23:28:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/API.md: Copied (new)
+2026/01/20 23:28:34 -   216.571 KiB / 1008.972 KiB, 21%, 8.609 KiB/s, ETA 1m32s 
+2026/01/20 23:28:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/API_MAJ_GROK.md: Copied (new)
+2026/01/20 23:28:34 -   216.571 KiB / 1008.972 KiB, 21%, 8.609 KiB/s, ETA 1m32s 
+2026/01/20 23:28:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/DQF_PROJECT.md: Copied (new)
+2026/01/20 23:28:34 -   216.571 KiB / 1008.972 KiB, 21%, 8.071 KiB/s, ETA 1m38s 2026/01/20 23:28:36 -   302.992 KiB / 1008.972 KiB, 30%, 7.567 KiB/s, ETA 1m33s 
+2026/01/20 23:28:37 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/TROUBLESHOOTING.md: Copied (new)
+2026/01/20 23:28:37 -   302.992 KiB / 1008.972 KiB, 30%, 12.495 KiB/s, ETA 56s (
+2026/01/20 23:28:37 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_17.txt: Copied (new)
+2026/01/20 23:28:37 -   319.777 KiB / 1008.972 KiB, 32%, 12.495 KiB/s, ETA 55s (
+2026/01/20 23:28:38 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_18-2_4.txt: Copied (new)
+2026/01/20 23:28:38 -   454.221 KiB / 1008.972 KiB, 45%, 13.308 KiB/s, ETA 41s (
+2026/01/20 23:28:39 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_18-2.txt: Copied (new)
+2026/01/20 23:28:39 -   577.124 KiB / 1008.972 KiB, 57%, 13.308 KiB/s, ETA 32s (
+2026/01/20 23:28:40 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_18.txt: Copied (new)
+2026/01/20 23:28:40 -   581.923 KiB / 1008.972 KiB, 58%, 27.519 KiB/s, ETA 15s (
+2026/01/20 23:28:40 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_18-4.txt: Copied (new)
+2026/01/20 23:28:40 -   581.923 KiB / 1008.972 KiB, 58%, 27.519 KiB/s, ETA 15s (
+2026/01/20 23:28:40 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_19.txt: Copied (new)
+2026/01/20 23:28:40 -   581.923 KiB / 1008.972 KiB, 58%, 27.519 KiB/s, ETA 15s (2026/01/20 23:28:41 -   745.741 KiB / 1.017 MiB, 72%, 25.798 KiB/s, ETA 11s (xfr
+2026/01/20 23:28:42 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_23.txt: Copied (new)
+2026/01/20 23:28:42 -   870.505 KiB / 1.017 MiB, 84%, 34.425 KiB/s, ETA 4s (xfr#
+2026/01/20 23:28:42 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_21.txt: Copied (new)
+2026/01/20 23:28:42 -   870.505 KiB / 1.017 MiB, 84%, 34.425 KiB/s, ETA 4s (xfr#
+2026/01/20 23:28:42 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_20.txt: Copied (new)
+2026/01/20 23:28:42 -   870.505 KiB / 1.017 MiB, 84%, 34.425 KiB/s, ETA 4s (xfr#
+2026/01/20 23:28:43 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_22.txt: Copied (new)
+2026/01/20 23:28:43 -   947.967 KiB / 1.157 MiB, 80%, 44.912 KiB/s, ETA 5s (xfr#
+2026/01/20 23:28:43 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_25.txt: Copied (new)
+2026/01/20 23:28:43 -   947.967 KiB / 1.157 MiB, 80%, 42.105 KiB/s, ETA 5s (xfr#
+2026/01/20 23:28:44 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_24.txt: Copied (new)
+2026/01/20 23:28:44 -   947.967 KiB / 1.157 MiB, 80%, 42.105 KiB/s, ETA 5s (xfr#
+2026/01/20 23:28:44 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_26.txt: Copied (new)
+2026/01/20 23:28:44 -   947.967 KiB / 1.157 MiB, 80%, 42.105 KiB/s, ETA 5s (xfr#
+2026/01/20 23:28:45 INFO  : 09_MIF/01-DQF/mif-dqf/docs/TROUBLESHOOTING.md: Copied (replaced existing)
+2026/01/20 23:28:45 -     1.002 MiB / 1.157 MiB, 87%, 44.324 KiB/s, ETA 3s (xfr#
+2026/01/20 23:28:45 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_27.txt: Copied (new)
+2026/01/20 23:28:45 -     1.002 MiB / 1.157 MiB, 87%, 41.555 KiB/s, ETA 3s (xfr#
+2026/01/20 23:28:46 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs/examples_errors_28.txt: Copied (new)
+2026/01/20 23:28:46 -     1.012 MiB / 1.157 MiB, 87%, 41.555 KiB/s, ETA 3s (xfr#2026/01/20 23:28:46 -     1.017 MiB / 1.157 MiB, 88%, 41.555 KiB/s, ETA 3s (xfr#
+2026/01/20 23:28:47 INFO  : 09_MIF/01-DQF/mif-dqf/docs/API_MAJ_GROK.md: Copied (new)
+2026/01/20 23:28:47 -     1.017 MiB / 1.157 MiB, 88%, 39.972 KiB/s, ETA 3s (xfr#
+2026/01/20 23:28:47 INFO  : 09_MIF/01-DQF/mif-dqf/docs/DQF_PROJECT.md: Copied (replaced existing)
+2026/01/20 23:28:47 -     1.072 MiB / 1.157 MiB, 93%, 39.972 KiB/s, ETA 2s (xfr#
+2026/01/20 23:28:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/API.md: Copied (new)
+2026/01/20 23:28:48 -     1.072 MiB / 1.157 MiB, 93%, 40.965 KiB/s, ETA 2s (xfr#
+2026/01/20 23:28:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/ARCHITECTURE.md: Copied (new)
+2026/01/20 23:28:48 -     1.072 MiB / 1.157 MiB, 93%, 40.965 KiB/s, ETA 2s (xfr#
+2026/01/20 23:28:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/API_MAJ_GROK.md: Copied (new)
+2026/01/20 23:28:48 -     1.072 MiB / 1.157 MiB, 93%, 38.405 KiB/s, ETA 2s (xfr#
+2026/01/20 23:28:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/DQF_PROJECT.md: Copied (new)
+2026/01/20 23:28:51 -     1.145 MiB / 1.157 MiB, 99%, 38.319 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/TROUBLESHOOTING.md: Copied (new)
+2026/01/20 23:28:51 -     1.145 MiB / 1.157 MiB, 99%, 38.319 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/examples_errors_28.txt: Copied (new)
+2026/01/20 23:28:51 -     1.145 MiB / 1.157 MiB, 99%, 38.319 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs/examples_errors_29.txt: Copied (new)
+2026/01/20 23:28:51 -     1.145 MiB / 1.157 MiB, 99%, 38.319 KiB/s, ETA 0s (xfr#2026/01/20 23:28:51 -     1.145 MiB / 1.157 MiB, 99%, 38.319 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:54 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/__init__.py: Copied (new)
+2026/01/20 23:28:54 -     1.147 MiB / 1.157 MiB, 99%, 31.728 KiB/s, ETA 0s (xfr#2026/01/20 23:28:56 -     1.149 MiB / 1.157 MiB, 99%, 27.885 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:57 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BAD_2026-01-21T03-13-21.364010.json: Copied (new)
+2026/01/20 23:28:57 -     1.149 MiB / 1.159 MiB, 99%, 26.254 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:57 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-13-21.161945.json: Copied (new)
+2026/01/20 23:28:57 -     1.149 MiB / 1.159 MiB, 99%, 26.254 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:57 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BAD_2026-01-21T03-16-05.292541.json: Copied (new)
+2026/01/20 23:28:57 -     1.149 MiB / 1.161 MiB, 99%, 26.254 KiB/s, ETA 0s (xfr#
+2026/01/20 23:28:57 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-13-21.334946.json: Copied (new)
+2026/01/20 23:28:57 -     1.149 MiB / 1.161 MiB, 99%, 26.254 KiB/s, ETA 0s (xfr#
+2026/01/20 23:29:00 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-13-21.388611.json: Copied (new)
+2026/01/20 23:29:00 -     1.151 MiB / 1.246 MiB, 92%, 20.427 KiB/s, ETA 4s (xfr#
+2026/01/20 23:29:00 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-13-21.427446.json: Copied (new)
+2026/01/20 23:29:00 -     1.151 MiB / 1.246 MiB, 92%, 20.427 KiB/s, ETA 4s (xfr#
+2026/01/20 23:29:00 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-13-21.500052.json: Copied (new)
+2026/01/20 23:29:00 -     1.151 MiB / 1.246 MiB, 92%, 20.427 KiB/s, ETA 4s (xfr#
+2026/01/20 23:29:01 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-16-05.239733.json: Copied (new)
+2026/01/20 23:29:01 -     1.151 MiB / 1.246 MiB, 92%, 20.427 KiB/s, ETA 4s (xfr#2026/01/20 23:29:01 -     1.151 MiB / 1.246 MiB, 92%, 20.427 KiB/s, ETA 4s (xfr#
+2026/01/20 23:29:04 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-16-05.308216.json: Copied (new)
+2026/01/20 23:29:04 -     1.154 MiB / 1.246 MiB, 93%, 16.979 KiB/s, ETA 5s (xfr#
+2026/01/20 23:29:04 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-16-05.328553.json: Copied (new)
+2026/01/20 23:29:04 -     1.154 MiB / 1.246 MiB, 93%, 16.979 KiB/s, ETA 5s (xfr#
+2026/01/20 23:29:04 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-16-05.287689.json: Copied (new)
+2026/01/20 23:29:04 -     1.154 MiB / 1.246 MiB, 93%, 16.979 KiB/s, ETA 5s (xfr#
+2026/01/20 23:29:04 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-16-05.271925.json: Copied (new)
+2026/01/20 23:29:04 -     1.154 MiB / 1.246 MiB, 93%, 16.979 KiB/s, ETA 5s (xfr#2026/01/20 23:29:06 -     1.155 MiB / 1.246 MiB, 93%, 15.030 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:06 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/BTC-USD_2026-01-21T03-16-05.390842.json: Copied (new)
+2026/01/20 23:29:06 -     1.155 MiB / 1.246 MiB, 93%, 15.030 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:06 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/unknown_2026-01-21T03-13-22.359754.json: Copied (new)
+2026/01/20 23:29:06 -     1.155 MiB / 1.246 MiB, 93%, 15.030 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:07 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/CORRUPT_2026-01-21T03-16-05.255764.json: Copied (new)
+2026/01/20 23:29:07 -     1.155 MiB / 1.246 MiB, 93%, 14.091 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:08 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/CORRUPT_2026-01-21T03-13-21.271762.json: Copied (new)
+2026/01/20 23:29:08 -     1.161 MiB / 1.246 MiB, 93%, 13.399 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:08 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/__init__.py: Copied (replaced existing)
+2026/01/20 23:29:08 -     1.161 MiB / 1.246 MiB, 93%, 13.399 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/__init__.py: Copied (new)
+2026/01/20 23:29:09 -     1.161 MiB / 1.246 MiB, 93%, 12.750 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:09 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance/unknown_2026-01-21T03-16-05.756972.json: Copied (new)
+2026/01/20 23:29:09 -     1.161 MiB / 1.246 MiB, 93%, 12.750 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/examples/01_basic_validation.py: Copied (new)
+2026/01/20 23:29:11 -     1.196 MiB / 1.276 MiB, 94%, 13.403 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/examples/04_custom_check.py: Copied (new)
+2026/01/20 23:29:11 -     1.196 MiB / 1.276 MiB, 94%, 13.403 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/examples/03_batch_processing.py: Copied (new)
+2026/01/20 23:29:11 -     1.196 MiB / 1.276 MiB, 94%, 13.403 KiB/s, ETA 6s (xfr#2026/01/20 23:29:11 -     1.196 MiB / 1.276 MiB, 94%, 13.403 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:11 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/examples/02_custom_config.py: Copied (new)
+2026/01/20 23:29:11 -     1.196 MiB / 1.276 MiB, 94%, 13.403 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:14 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_1_source.py: Copied (new)
+2026/01/20 23:29:14 -     1.218 MiB / 1.467 MiB, 83%, 12.471 KiB/s, ETA 20s (xfr
+2026/01/20 23:29:14 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_2_integrity.py: Copied (new)
+2026/01/20 23:29:14 -     1.218 MiB / 1.467 MiB, 83%, 12.471 KiB/s, ETA 20s (xfr
+2026/01/20 23:29:14 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/__init__.py: Copied (new)
+2026/01/20 23:29:14 -     1.218 MiB / 1.467 MiB, 83%, 12.471 KiB/s, ETA 20s (xfr
+2026/01/20 23:29:14 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/base.py: Copied (new)
+2026/01/20 23:29:14 -     1.218 MiB / 1.467 MiB, 83%, 12.471 KiB/s, ETA 20s (xfr2026/01/20 23:29:16 -     1.236 MiB / 1.467 MiB, 84%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:16 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_3_calendar.py: Copied (new)
+2026/01/20 23:29:16 -     1.236 MiB / 1.467 MiB, 84%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:16 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_4_ffill.py: Copied (new)
+2026/01/20 23:29:16 -     1.236 MiB / 1.467 MiB, 84%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_6_sanity.py: Copied (new)
+2026/01/20 23:29:17 -     1.255 MiB / 1.467 MiB, 86%, 12.471 KiB/s, ETA 17s (xfr
+2026/01/20 23:29:18 INFO  : 09_MIF/01-DQF/mif-dqf/examples/02_custom_config.py: Copied (replaced existing)
+2026/01/20 23:29:18 -     1.265 MiB / 1.467 MiB, 86%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:29:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_5_trace.py: Copied (new)
+2026/01/20 23:29:18 -     1.265 MiB / 1.467 MiB, 86%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:29:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks/check_7_logging.py: Copied (new)
+2026/01/20 23:29:18 -     1.265 MiB / 1.467 MiB, 86%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:29:19 INFO  : 09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py: Copied (replaced existing)
+2026/01/20 23:29:19 -     1.265 MiB / 1.467 MiB, 86%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:29:20 INFO  : 09_MIF/01-DQF/mif-dqf/examples/04_custom_check.py: Copied (replaced existing)
+2026/01/20 23:29:20 -     1.281 MiB / 1.467 MiB, 87%, 12.471 KiB/s, ETA 15s (xfr2026/01/20 23:29:21 -     1.299 MiB / 1.467 MiB, 89%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:21 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/examples/01_basic_validation.py: Copied (new)
+2026/01/20 23:29:21 -     1.299 MiB / 1.467 MiB, 89%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:21 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/examples/02_custom_config.py: Copied (new)
+2026/01/20 23:29:21 -     1.299 MiB / 1.467 MiB, 89%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/examples/03_batch_processing.py: Copied (new)
+2026/01/20 23:29:22 -     1.299 MiB / 1.467 MiB, 89%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:23 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/examples/04_custom_check.py: Copied (new)
+2026/01/20 23:29:23 -     1.311 MiB / 1.467 MiB, 89%, 12.471 KiB/s, ETA 12s (xfr
+2026/01/20 23:29:25 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/bootstrap.py: Copied (new)
+2026/01/20 23:29:25 -     1.321 MiB / 1.475 MiB, 90%, 12.471 KiB/s, ETA 12s (xfr
+2026/01/20 23:29:25 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/check_imports.py: Copied (new)
+2026/01/20 23:29:25 -     1.321 MiB / 1.475 MiB, 90%, 12.471 KiB/s, ETA 12s (xfr
+2026/01/20 23:29:25 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/bootstrap_dqf_nix.sh: Copied (new)
+2026/01/20 23:29:25 -     1.321 MiB / 1.475 MiB, 90%, 12.471 KiB/s, ETA 12s (xfr
+2026/01/20 23:29:25 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/check_github_account.sh: Copied (new)
+2026/01/20 23:29:25 -     1.321 MiB / 1.475 MiB, 90%, 12.471 KiB/s, ETA 12s (xfr2026/01/20 23:29:26 -     1.321 MiB / 1.525 MiB, 87%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:29:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/cleanup_dqf.sh: Copied (new)
+2026/01/20 23:29:27 -     1.342 MiB / 1.570 MiB, 85%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/diagnose.py: Copied (new)
+2026/01/20 23:29:27 -     1.342 MiB / 1.570 MiB, 85%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/dqf_tools.py: Copied (new)
+2026/01/20 23:29:27 -     1.342 MiB / 1.570 MiB, 85%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:28 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/cleanup.sh: Copied (new)
+2026/01/20 23:29:28 -     1.342 MiB / 1.570 MiB, 85%, 12.471 KiB/s, ETA 18s (xfr
+2026/01/20 23:29:31 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/__init__.py: Copied (new)
+2026/01/20 23:29:31 -     1.362 MiB / 1.576 MiB, 86%, 12.471 KiB/s, ETA 17s (xfr
+2026/01/20 23:29:31 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/verify_class_names.py: Copied (new)
+2026/01/20 23:29:31 -     1.362 MiB / 1.576 MiB, 86%, 12.471 KiB/s, ETA 17s (xfr2026/01/20 23:29:31 -     1.362 MiB / 1.576 MiB, 86%, 12.471 KiB/s, ETA 17s (xfr
+2026/01/20 23:29:31 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/git_sync.py: Copied (new)
+2026/01/20 23:29:31 -     1.362 MiB / 1.576 MiB, 86%, 12.471 KiB/s, ETA 17s (xfr
+2026/01/20 23:29:31 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/test_install.py: Copied (new)
+2026/01/20 23:29:31 -     1.362 MiB / 1.576 MiB, 86%, 12.471 KiB/s, ETA 17s (xfr
+2026/01/20 23:29:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/base.py: Copied (new)
+2026/01/20 23:29:34 -     1.388 MiB / 1.576 MiB, 88%, 12.471 KiB/s, ETA 15s (xfr
+2026/01/20 23:29:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_3_calendar.py: Copied (new)
+2026/01/20 23:29:34 -     1.388 MiB / 1.576 MiB, 88%, 12.471 KiB/s, ETA 15s (xfr
+2026/01/20 23:29:35 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_2_integrity.py: Copied (new)
+2026/01/20 23:29:35 -     1.388 MiB / 1.576 MiB, 88%, 12.471 KiB/s, ETA 15s (xfr
+2026/01/20 23:29:35 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_1_source.py: Copied (new)
+2026/01/20 23:29:35 -     1.388 MiB / 1.576 MiB, 88%, 12.471 KiB/s, ETA 15s (xfr2026/01/20 23:29:36 -     1.388 MiB / 1.576 MiB, 88%, 12.471 KiB/s, ETA 15s (xfr
+2026/01/20 23:29:38 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_4_ffill.py: Copied (new)
+2026/01/20 23:29:38 -     1.412 MiB / 1.576 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:38 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_7_logging.py: Copied (new)
+2026/01/20 23:29:38 -     1.412 MiB / 1.576 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:39 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_5_trace.py: Copied (new)
+2026/01/20 23:29:39 -     1.412 MiB / 1.576 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:39 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks/check_6_sanity.py: Copied (new)
+2026/01/20 23:29:39 -     1.412 MiB / 1.576 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr2026/01/20 23:29:41 -     1.440 MiB / 1.600 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:41 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/checks/check_4_ffill.py: Copied (replaced existing)
+2026/01/20 23:29:41 -     1.440 MiB / 1.600 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:41 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/checks/check_2_integrity.py: Copied (replaced existing)
+2026/01/20 23:29:41 -     1.440 MiB / 1.600 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:41 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/checks/base.py: Copied (replaced existing)
+2026/01/20 23:29:41 -     1.440 MiB / 1.600 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:41 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/checks/check_7_logging.py: Copied (replaced existing)
+2026/01/20 23:29:41 -     1.440 MiB / 1.600 MiB, 90%, 12.471 KiB/s, ETA 13s (xfr
+2026/01/20 23:29:45 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/core/__init__.py: Copied (new)
+2026/01/20 23:29:45 -     1.457 MiB / 1.600 MiB, 91%, 12.471 KiB/s, ETA 11s (xfr
+2026/01/20 23:29:45 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/core/config.py: Copied (new)
+2026/01/20 23:29:45 -     1.457 MiB / 1.600 MiB, 91%, 12.471 KiB/s, ETA 11s (xfr
+2026/01/20 23:29:46 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/core/enums.py: Copied (new)
+2026/01/20 23:29:46 -     1.457 MiB / 1.600 MiB, 91%, 12.471 KiB/s, ETA 11s (xfr
+2026/01/20 23:29:46 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/core/report.py: Copied (new)
+2026/01/20 23:29:46 -     1.457 MiB / 1.600 MiB, 91%, 12.471 KiB/s, ETA 11s (xfr2026/01/20 23:29:46 -     1.457 MiB / 1.600 MiB, 91%, 12.471 KiB/s, ETA 11s (xfr
+2026/01/20 23:29:47 INFO  : 09_MIF/01-DQF/mif-dqf/scripts/cleanup_dqf.sh: Copied (replaced existing)
+2026/01/20 23:29:47 -     1.475 MiB / 1.600 MiB, 92%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/core/validator.py: Copied (new)
+2026/01/20 23:29:48 -     1.475 MiB / 1.600 MiB, 92%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:48 INFO  : 09_MIF/01-DQF/mif-dqf/scripts/repair_environment.py: Copied (new)
+2026/01/20 23:29:48 -     1.475 MiB / 1.600 MiB, 92%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/bootstrap.py: Copied (new)
+2026/01/20 23:29:48 -     1.475 MiB / 1.600 MiB, 92%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/bootstrap_dqf_nix.sh: Copied (new)
+2026/01/20 23:29:51 -     1.492 MiB / 1.600 MiB, 93%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:29:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/check_imports.py: Copied (new)
+2026/01/20 23:29:51 -     1.492 MiB / 1.600 MiB, 93%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:29:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/check_github_account.sh: Copied (new)
+2026/01/20 23:29:51 -     1.492 MiB / 1.600 MiB, 93%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:29:51 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/cleanup.sh: Copied (new)
+2026/01/20 23:29:51 -     1.492 MiB / 1.600 MiB, 93%, 12.471 KiB/s, ETA 8s (xfr#2026/01/20 23:29:51 -     1.492 MiB / 1.600 MiB, 93%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:29:53 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/cleanup_dqf.sh: Copied (new)
+2026/01/20 23:29:53 -     1.516 MiB / 1.600 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:53 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/diagnose.py: Copied (new)
+2026/01/20 23:29:53 -     1.516 MiB / 1.600 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:53 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/dqf_tools.py: Copied (new)
+2026/01/20 23:29:53 -     1.516 MiB / 1.600 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:54 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/git_sync.py: Copied (new)
+2026/01/20 23:29:54 -     1.525 MiB / 1.600 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:29:55 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/core/validator.py: Copied (replaced existing)
+2026/01/20 23:29:55 -     1.535 MiB / 1.654 MiB, 93%, 12.471 KiB/s, ETA 9s (xfr#
+2026/01/20 23:29:55 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/core/report.py: Copied (replaced existing)
+2026/01/20 23:29:55 -     1.535 MiB / 1.654 MiB, 93%, 12.471 KiB/s, ETA 9s (xfr#2026/01/20 23:29:56 -     1.544 MiB / 1.668 MiB, 93%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:56 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/verify_class_names.py: Copied (new)
+2026/01/20 23:29:56 -     1.544 MiB / 1.668 MiB, 93%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:56 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/test_install.py: Copied (new)
+2026/01/20 23:29:56 -     1.544 MiB / 1.668 MiB, 93%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:58 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/src/__init__.py: Copied (new)
+2026/01/20 23:29:58 -     1.544 MiB / 1.668 MiB, 93%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:29:59 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/core/config.py: Copied (new)
+2026/01/20 23:29:59 -     1.560 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:29:59 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/core/enums.py: Copied (new)
+2026/01/20 23:29:59 -     1.560 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:29:59 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/core/__init__.py: Copied (new)
+2026/01/20 23:29:59 -     1.560 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:30:00 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/core/report.py: Copied (new)
+2026/01/20 23:30:00 -     1.560 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 8s (xfr#2026/01/20 23:30:01 -     1.560 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 8s (xfr#
+2026/01/20 23:30:02 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/utils/__init__.py: Copied (new)
+2026/01/20 23:30:02 -     1.575 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:03 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/utils/calendar.py: Copied (new)
+2026/01/20 23:30:03 -     1.575 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:03 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/core/validator.py: Copied (new)
+2026/01/20 23:30:03 -     1.575 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:03 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/old/check_encoding.py: Copied (new)
+2026/01/20 23:30:03 -     1.575 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:06 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/old/doctor.py: Copied (new)
+2026/01/20 23:30:06 -     1.576 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 7s (xfr#2026/01/20 23:30:06 -     1.576 MiB / 1.668 MiB, 94%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:07 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/src/__init__.py: Copied (new)
+2026/01/20 23:30:07 -     1.576 MiB / 1.668 MiB, 95%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:08 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/old/fix_encoding.py: Copied (new)
+2026/01/20 23:30:08 -     1.585 MiB / 1.668 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:30:08 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/__init__.py: Copied (new)
+2026/01/20 23:30:08 -     1.590 MiB / 1.668 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:30:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/conftest.py: Copied (new)
+2026/01/20 23:30:09 -     1.590 MiB / 1.668 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:30:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/test_base_check.py: Copied (new)
+2026/01/20 23:30:09 -     1.590 MiB / 1.668 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:30:09 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/test_base_check.py.backup: Copied (new)
+2026/01/20 23:30:09 -     1.590 MiB / 1.668 MiB, 95%, 12.471 KiB/s, ETA 6s (xfr#2026/01/20 23:30:11 -     1.590 MiB / 1.676 MiB, 95%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:12 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/test_example.py: Copied (new)
+2026/01/20 23:30:12 -     1.592 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m11s (x
+2026/01/20 23:30:12 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/old/check_encoding.py: Copied (new)
+2026/01/20 23:30:12 -     1.592 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m11s (x
+2026/01/20 23:30:12 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/old/fix_encoding.py: Copied (new)
+2026/01/20 23:30:12 -     1.592 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m11s (x
+2026/01/20 23:30:13 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/old/doctor.py: Copied (new)
+2026/01/20 23:30:13 -     1.592 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m11s (x
+2026/01/20 23:30:16 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/utils/__init__.py: Copied (new)
+2026/01/20 23:30:16 -     1.593 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x2026/01/20 23:30:16 -     1.593 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x
+2026/01/20 23:30:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/utils/clean_non_ascii.sh: Copied (new)
+2026/01/20 23:30:17 -     1.600 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x
+2026/01/20 23:30:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/utils/check_test_structure.py: Copied (new)
+2026/01/20 23:30:17 -     1.600 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x
+2026/01/20 23:30:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/utils/calendar.py: Copied (new)
+2026/01/20 23:30:18 -     1.602 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x
+2026/01/20 23:30:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/conftest.py: Copied (new)
+2026/01/20 23:30:19 -     1.602 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x
+2026/01/20 23:30:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/test_example.py: Copied (new)
+2026/01/20 23:30:19 -     1.602 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x
+2026/01/20 23:30:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/__init__.py: Copied (new)
+2026/01/20 23:30:19 -     1.602 MiB / 2.457 MiB, 65%, 12.471 KiB/s, ETA 1m10s (x2026/01/20 23:30:21 -     1.653 MiB / 2.457 MiB, 67%, 12.471 KiB/s, ETA 1m5s (xf
+2026/01/20 23:30:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/utils/check_test_structure.py: Copied (new)
+2026/01/20 23:30:22 -     1.653 MiB / 2.457 MiB, 67%, 12.471 KiB/s, ETA 1m5s (xf
+2026/01/20 23:30:22 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/docs/errors_30.txt: Copied (new)
+2026/01/20 23:30:22 -     1.662 MiB / 2.457 MiB, 68%, 12.471 KiB/s, ETA 1m5s (xf
+2026/01/20 23:30:23 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/integration/test_validator.py: Copied (new)
+2026/01/20 23:30:23 -     1.676 MiB / 2.457 MiB, 68%, 12.471 KiB/s, ETA 1m4s (xf
+2026/01/20 23:30:23 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/utils/clean_non_ascii.sh: Copied (new)
+2026/01/20 23:30:23 -     1.676 MiB / 2.457 MiB, 68%, 12.471 KiB/s, ETA 1m4s (xf
+2026/01/20 23:30:24 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/integration/test_validator.py.backup: Copied (new)
+2026/01/20 23:30:24 -     1.676 MiB / 2.457 MiB, 68%, 12.471 KiB/s, ETA 1m4s (xf
+2026/01/20 23:30:24 INFO  : 09_MIF/01-DQF/mif-dqf/tests/integration/test_validator.py: Copied (replaced existing)
+2026/01/20 23:30:24 -     1.676 MiB / 2.457 MiB, 68%, 12.471 KiB/s, ETA 1m4s (xf2026/01/20 23:30:26 -     1.763 MiB / 2.497 MiB, 71%, 12.471 KiB/s, ETA 1m (xfr#
+2026/01/20 23:30:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/integration/test_validator.py: Copied (new)
+2026/01/20 23:30:27 -     1.763 MiB / 2.497 MiB, 71%, 12.471 KiB/s, ETA 1m (xfr#
+2026/01/20 23:30:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/NEXT_STEPS.MD: Copied (new)
+2026/01/20 23:30:27 -     1.763 MiB / 2.497 MiB, 71%, 12.471 KiB/s, ETA 1m (xfr#
+2026/01/20 23:30:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/integration/test_validator.py.backup: Copied (new)
+2026/01/20 23:30:27 -     1.763 MiB / 2.497 MiB, 71%, 12.471 KiB/s, ETA 1m (xfr#
+2026/01/20 23:30:27 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_17.txt: Copied (new)
+2026/01/20 23:30:27 -     1.763 MiB / 2.497 MiB, 71%, 12.471 KiB/s, ETA 1m (xfr#
+2026/01/20 23:30:28 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_2_integrity.py: Updated modification time in destination
+2026/01/20 23:30:28 -     1.801 MiB / 2.545 MiB, 71%, 12.471 KiB/s, ETA 1m1s (xf
+2026/01/20 23:30:29 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_18-2.txt: Copied (new)
+2026/01/20 23:30:29 -     1.921 MiB / 2.545 MiB, 75%, 12.471 KiB/s, ETA 51s (xfr
+2026/01/20 23:30:29 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_18-2_4.txt: Copied (new)
+2026/01/20 23:30:29 -     1.921 MiB / 2.545 MiB, 75%, 12.471 KiB/s, ETA 51s (xfr
+2026/01/20 23:30:30 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_18.txt: Copied (new)
+2026/01/20 23:30:30 -     1.937 MiB / 2.545 MiB, 76%, 12.471 KiB/s, ETA 49s (xfr
+2026/01/20 23:30:31 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_18-4.txt: Copied (new)
+2026/01/20 23:30:31 -     2.183 MiB / 2.545 MiB, 86%, 12.471 KiB/s, ETA 29s (xfr2026/01/20 23:30:31 -     2.183 MiB / 2.545 MiB, 86%, 12.471 KiB/s, ETA 29s (xfr
+2026/01/20 23:30:32 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_20.txt: Copied (new)
+2026/01/20 23:30:32 -     2.183 MiB / 2.545 MiB, 86%, 12.471 KiB/s, ETA 29s (xfr
+2026/01/20 23:30:32 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_19.txt: Copied (new)
+2026/01/20 23:30:32 -     2.183 MiB / 2.545 MiB, 86%, 12.471 KiB/s, ETA 29s (xfr
+2026/01/20 23:30:32 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_21.txt: Copied (new)
+2026/01/20 23:30:32 -     2.183 MiB / 2.545 MiB, 86%, 12.471 KiB/s, ETA 29s (xfr
+2026/01/20 23:30:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_22.txt: Copied (new)
+2026/01/20 23:30:34 -     2.344 MiB / 2.545 MiB, 92%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:30:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_23.txt: Copied (new)
+2026/01/20 23:30:34 -     2.344 MiB / 2.545 MiB, 92%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:30:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_25.txt: Copied (new)
+2026/01/20 23:30:34 -     2.344 MiB / 2.545 MiB, 92%, 12.471 KiB/s, ETA 16s (xfr
+2026/01/20 23:30:34 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_24.txt: Copied (new)
+2026/01/20 23:30:34 -     2.344 MiB / 2.545 MiB, 92%, 12.471 KiB/s, ETA 16s (xfr2026/01/20 23:30:36 -     2.408 MiB / 2.545 MiB, 95%, 12.471 KiB/s, ETA 11s (xfr
+2026/01/20 23:30:37 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_base_check.py: Copied (new)
+2026/01/20 23:30:37 -     2.415 MiB / 2.545 MiB, 95%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:30:37 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_27.txt: Copied (new)
+2026/01/20 23:30:37 -     2.415 MiB / 2.545 MiB, 95%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:30:37 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_26.txt: Copied (new)
+2026/01/20 23:30:37 -     2.415 MiB / 2.545 MiB, 95%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:30:37 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs/examples_errors_28.txt: Copied (new)
+2026/01/20 23:30:37 -     2.415 MiB / 2.545 MiB, 95%, 12.471 KiB/s, ETA 10s (xfr
+2026/01/20 23:30:40 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_3_calendar.py: Copied (new)
+2026/01/20 23:30:40 -     2.431 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 9s (xfr#
+2026/01/20 23:30:40 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_2_integrity.py: Copied (new)
+2026/01/20 23:30:40 -     2.431 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 9s (xfr#
+2026/01/20 23:30:40 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_1_source.py: Copied (new)
+2026/01/20 23:30:40 -     2.431 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 9s (xfr#2026/01/20 23:30:41 -     2.453 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:42 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_4_ffill.py: Copied (new)
+2026/01/20 23:30:42 -     2.453 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:42 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_6_sanity.py: Copied (new)
+2026/01/20 23:30:42 -     2.453 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:42 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_5_trace.py: Copied (new)
+2026/01/20 23:30:42 -     2.453 MiB / 2.545 MiB, 96%, 12.471 KiB/s, ETA 7s (xfr#
+2026/01/20 23:30:43 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit/test_check_7_logging.py: Copied (new)
+2026/01/20 23:30:43 -     2.471 MiB / 2.545 MiB, 97%, 12.471 KiB/s, ETA 6s (xfr#
+2026/01/20 23:30:44 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_1_source.py: Copied (replaced existing)
+2026/01/20 23:30:44 -     2.480 MiB / 2.545 MiB, 97%, 12.471 KiB/s, ETA 5s (xfr#
+2026/01/20 23:30:44 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_6_sanity.py: Copied (replaced existing)
+2026/01/20 23:30:44 -     2.480 MiB / 2.545 MiB, 97%, 12.471 KiB/s, ETA 5s (xfr#
+2026/01/20 23:30:44 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_base_check.py: Copied (replaced existing)
+2026/01/20 23:30:44 -     2.480 MiB / 2.545 MiB, 97%, 12.471 KiB/s, ETA 5s (xfr#
+2026/01/20 23:30:45 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_4_ffill.py: Copied (replaced existing)
+2026/01/20 23:30:45 -     2.480 MiB / 2.545 MiB, 97%, 12.471 KiB/s, ETA 5s (xfr#2026/01/20 23:30:46 -     2.497 MiB / 2.545 MiB, 98%, 12.471 KiB/s, ETA 3s (xfr#
+2026/01/20 23:30:47 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_7_logging.py: Copied (replaced existing)
+2026/01/20 23:30:47 -     2.497 MiB / 2.545 MiB, 98%, 12.471 KiB/s, ETA 3s (xfr#
+2026/01/20 23:30:47 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_5_trace.py: Copied (replaced existing)
+2026/01/20 23:30:47 -     2.503 MiB / 2.545 MiB, 98%, 12.471 KiB/s, ETA 3s (xfr#
+2026/01/20 23:30:47 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit/test_check_3_calendar.py: Copied (replaced existing)
+2026/01/20 23:30:47 -     2.503 MiB / 2.545 MiB, 98%, 12.471 KiB/s, ETA 3s (xfr#
+2026/01/20 23:30:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_base_check.py: Copied (new)
+2026/01/20 23:30:48 -     2.508 MiB / 2.545 MiB, 99%, 12.471 KiB/s, ETA 3s (xfr#
+2026/01/20 23:30:48 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_1_source.py: Copied (new)
+2026/01/20 23:30:48 -     2.508 MiB / 2.545 MiB, 99%, 12.471 KiB/s, ETA 3s (xfr#
+2026/01/20 23:30:50 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_2_integrity.py: Copied (new)
+2026/01/20 23:30:50 -     2.537 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s (xfr
+2026/01/20 23:30:50 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_3_calendar.py: Copied (new)
+2026/01/20 23:30:50 -     2.537 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s (xfr
+2026/01/20 23:30:50 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_4_ffill.py: Copied (new)
+2026/01/20 23:30:50 -     2.537 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:30:50 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_5_trace.py: Copied (new)
+2026/01/20 23:30:50 -     2.537 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:30:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:30:52 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_7_logging.py: Copied (new)
+2026/01/20 23:30:52 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:30:52 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit/test_check_6_sanity.py: Copied (new)
+2026/01/20 23:30:52 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:30:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:31:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:32:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:12 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest: no such file or directory
+2026/01/20 23:33:12 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:12 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest: no such file or directory
+2026/01/20 23:33:12 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:27 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest: no such file or directory
+2026/01/20 23:33:27 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:27 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest: no such file or directory
+2026/01/20 23:33:27 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:41 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest: no such file or directory
+2026/01/20 23:33:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:46 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest: no such file or directory
+2026/01/20 23:33:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:53 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest: no such file or directory
+2026/01/20 23:33:53 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:53 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest: no such file or directory
+2026/01/20 23:33:53 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:33:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:57 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest: no such file or directory
+2026/01/20 23:33:57 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:33:58 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest: no such file or directory
+2026/01/20 23:33:58 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:34:08 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest: no such file or directory
+2026/01/20 23:34:08 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:34:21 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest: no such file or directory
+2026/01/20 23:34:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:34:21 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest: no such file or directory
+2026/01/20 23:34:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:34:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:35:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:36:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:37:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:38:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:16 ERROR : Google drive root 'Projects': not deleting files as there were IO errors
+2026/01/20 23:39:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/checks: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/core: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/utils: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/old: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf/checks: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf/provenance: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/core: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf/utils: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/old: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts/utils: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/integration: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/integration: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts/utils: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests/unit: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:17 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests/unit: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:17 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/docs: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/mif-dqf/_work/dqf: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/src: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/scripts: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/dqf: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/tests: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/config: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/examples: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645/config: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:18 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/docs: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:18 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/dqf: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/src: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/tests: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/examples: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430/scripts: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/checks: Set directory modification time (using SetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633/docs: Set directory modification time (using SetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/mif-dqf/dqf/core: Set directory modification time (using SetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933/docs: Set directory modification time (using SetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/mif-dqf/tests/integration: Set directory modification time (using SetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:19 INFO  : 09_MIF/01-DQF/mif-dqf/tests/unit: Set directory modification time (using SetModTime)
+2026/01/20 23:39:19 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/mif-dqf/examples: Set directory modification time (using SetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_210430: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/mif-dqf/_work: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/mif-dqf/scripts: Set directory modification time (using SetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.8.3_20260118_124933: Set directory modification time (using SetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/mif-dqf/docs: Set directory modification time (using SetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/mif-dqf/dqf: Set directory modification time (using SetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:20 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v1.0.0_20260120_202645: Set directory modification time (using DirSetModTime)
+2026/01/20 23:39:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:21 INFO  : 09_MIF/01-DQF/mif-dqf/tests: Set directory modification time (using SetModTime)
+2026/01/20 23:39:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:21 INFO  : 09_MIF/01-DQF/dqf-backups/dqf_v4.3-check3-done_20260109_224633: Set directory modification time (using SetModTime)
+2026/01/20 23:39:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:21 INFO  : 09_MIF/01-DQF/mif-dqf: Set directory modification time (using SetModTime)
+2026/01/20 23:39:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:21 INFO  : 09_MIF/01-DQF/dqf-backups: Set directory modification time (using SetModTime)
+2026/01/20 23:39:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:22 INFO  : 09_MIF/01-DQF: Set directory modification time (using SetModTime)
+2026/01/20 23:39:22 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:22 INFO  : 09_MIF: Set directory modification time (using SetModTime)
+2026/01/20 23:39:22 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:22 ERROR : Google drive root 'Projects': not deleting directories as there were IO errors
+2026/01/20 23:39:22 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:39:22 ERROR : Attempt 1/3 failed with 14 errors and: not deleting files as there were IO errors
+2026/01/20 23:39:22 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:39:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:40:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:41:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:42:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:43:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:44:42 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest: no such file or directory
+2026/01/20 23:44:42 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:44:42 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest: no such file or directory
+2026/01/20 23:44:42 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:44:55 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest: no such file or directory
+2026/01/20 23:44:55 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:44:55 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest: no such file or directory
+2026/01/20 23:44:55 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:44:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:09 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest: no such file or directory
+2026/01/20 23:45:09 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:09 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest: no such file or directory
+2026/01/20 23:45:09 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:20 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest: no such file or directory
+2026/01/20 23:45:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:20 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest: no such file or directory
+2026/01/20 23:45:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:20 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest: no such file or directory
+2026/01/20 23:45:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:20 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest: no such file or directory
+2026/01/20 23:45:20 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:33 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest: no such file or directory
+2026/01/20 23:45:33 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:46 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest: no such file or directory
+2026/01/20 23:45:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:45:46 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest: no such file or directory
+2026/01/20 23:45:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:45:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:46:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:47:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:48:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:49:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:50:44 ERROR : Google drive root 'Projects': not deleting files as there were IO errors
+2026/01/20 23:50:44 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:50:44 ERROR : Google drive root 'Projects': not deleting directories as there were IO errors
+2026/01/20 23:50:44 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:50:44 ERROR : Attempt 2/3 failed with 14 errors and: not deleting files as there were IO errors
+2026/01/20 23:50:44 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:50:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:51:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:52:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:53:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:54:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:55:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:55:57 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/alpha_stability/latest: no such file or directory
+2026/01/20 23:55:57 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:55:57 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/alpha_stability/latest: no such file or directory
+2026/01/20 23:55:57 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:11 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/bound_coherence/latest: no such file or directory
+2026/01/20 23:56:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:13 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/bound_coherence/latest: no such file or directory
+2026/01/20 23:56:13 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:25 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/spectral_score/latest: no such file or directory
+2026/01/20 23:56:25 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:32 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/alpha_stability/latest: no such file or directory
+2026/01/20 23:56:32 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:38 ERROR : 01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics/vol_ratio/latest: no such file or directory
+2026/01/20 23:56:38 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:38 ERROR : 01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF_v2.0/metrics (Copie)/vol_ratio/latest: no such file or directory
+2026/01/20 23:56:38 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:43 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/bound_coherence/latest: no such file or directory
+2026/01/20 23:56:43 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:43 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/bound_coherence/latest: no such file or directory
+2026/01/20 23:56:43 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:56:55 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/spectral_score/latest: no such file or directory
+2026/01/20 23:56:55 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:56:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:57:08 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics/vol_ratio/latest: no such file or directory
+2026/01/20 23:57:08 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/20 23:57:08 ERROR : 01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest: Listing error: symlink: stat /home/andrei/Projects/01_QAAF/01_QAAF (Copie 2)/qaaf_v2.0/metrics (Copie)/vol_ratio/latest: no such file or directory
+2026/01/20 23:57:08 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:57:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:58:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/20 23:59:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:00:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:41 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:46 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:51 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:01:56 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:01 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:06 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:11 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:16 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:21 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:26 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:31 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/21 00:02:36 ERROR : Google drive root 'Projects': not deleting files as there were IO errors
+2026/01/21 00:02:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/21 00:02:36 ERROR : Google drive root 'Projects': not deleting directories as there were IO errors
+2026/01/21 00:02:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/21 00:02:36 ERROR : Attempt 3/3 failed with 14 errors and: not deleting files as there were IO errors
+2026/01/21 00:02:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s2026/01/21 00:02:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/21 00:02:36 INFO  : 2026/01/21 00:02:36 -     2.545 MiB / 2.545 MiB, 100%, 12.471 KiB/s, ETA 0s
+2026/01/21 00:02:36 NOTICE: Failed to sync with 14 errors: last error was: not deleting files as there were IO errors
+❌ Échec sync /home/andrei/Projects (code: 1)
+
+

@@ -4,13 +4,19 @@ Check 2: OHLCV Integrity
 Validates OHLCV data integrity constraints.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
 from dqf.checks.base import BaseCheck, CheckResult
-from dqf.core.enums import (SEVERITY_CRITICAL, SEVERITY_ERROR, SEVERITY_INFO,
-                            STATUS_ERROR, STATUS_FAIL, STATUS_PASS)
+from dqf.core.enums import (
+    SEVERITY_CRITICAL,
+    SEVERITY_ERROR,
+    SEVERITY_INFO,
+    STATUS_ERROR,
+    STATUS_FAIL,
+    STATUS_PASS,
+)
 
 
 class IntegrityCheck(BaseCheck):
@@ -26,16 +32,16 @@ class IntegrityCheck(BaseCheck):
         - No negative volume
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize OHLCV Integrity check."""
         super().__init__(check_id="check_2_integrity", check_name="OHLCV Integrity")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -150,9 +156,7 @@ class IntegrityCheck(BaseCheck):
 
             # Update details
             details["violations"] = breakdown
-            details["violation_breakdown"] = (
-                breakdown  #  Same as violations for compatibility
-            )
+            details["violation_breakdown"] = breakdown  #  Same as violations for compatibility
             details["total_violations"] = total_violations
             details["violation_rate"] = violation_rate
 

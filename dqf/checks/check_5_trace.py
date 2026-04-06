@@ -4,7 +4,7 @@ Check 5: Index Traceability.
 Validates index structure and chronological ordering.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -22,16 +22,16 @@ class IndexTraceabilityCheck(BaseCheck):
     - Index is properly formatted
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Index Traceability check."""
         super().__init__(check_id="check_5_trace", check_name="Index Traceability")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """

@@ -1,0 +1,149 @@
+# DIFFÉRENCES EXACTES APPLIQUÉES
+
+## 1. dqf/checks/base.py
+
+### LIGNE 8 (Imports)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AVANT:
+    from typing import Any
+
+APRÈS:
+    from typing import Any, Dict, List, Optional
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### LIGNE 238-242 (_create_result)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AVANT:
+        return CheckResult(
+            check_name=self.check_name,
+            status=status,
+            message=message,
+            severity=severity,
+            details=details or {},
+            issues=issues or [],     # ❌ 'issues' NON DÉFINI
+        )
+
+APRÈS:
+        return CheckResult(
+            check_name=self.check_name,
+            status=status,
+            message=message,
+            severity=severity,
+            details=details or {},
+            # 'issues' initialisé automatiquement par CheckResult
+        )
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2. flake.nix
+
+### LIGNE 38-42 (pythonEnv)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AVANT:
+          pip
+          virtualenv
+          python-dotenv
+        ]);
+
+APRÈS:
+          pip
+          virtualenv
+          python-dotenv
+          
+          # Build tools (CRITIQUE pour 'python -m build')
+          build
+          setuptools
+          wheel
+          twine
+        ]);
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3. pyproject.toml
+
+### LIGNE 140-180 (Configuration ruff)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AVANT:
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",
+    "W",
+    "F",
+    ...
+]
+ignore = [...]
+exclude = [...]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
+APRÈS:
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [...]
+
+[tool.ruff.lint]              # ← NOUVELLE SECTION
+select = [
+    "E",
+    "W",
+    "F",
+    ...
+]
+ignore = [...]
+
+[tool.ruff.lint.per-file-ignores]  # ← DÉPLACÉ
+"__init__.py" = ["F401"]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 4. dqf/checks/__init__.py
+
+### FICHIER COMPLET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AVANT:
+"""DQF Checks Module"""
+from typing import Any, Dict, List, Optional  # ❌ DEPRECATED
+
+APRÈS:
+"""
+DQF Checks Module
+
+Provides all validation checks for data quality framework.
+"""
+
+# All checks are imported via dqf/__init__.py
+# This file is intentionally minimal
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## RÉSUMÉ DES CHANGEMENTS
+
+┌─────────────────────────┬───────────┬──────────────────────┐
+│ Fichier                 │ Lignes    │ Type Correction      │
+├─────────────────────────┼───────────┼──────────────────────┤
+│ dqf/checks/base.py      │ 8         │ Ajout imports        │
+│ dqf/checks/base.py      │ 241       │ Retrait ligne        │
+│ flake.nix               │ 38-42     │ Ajout packages       │
+│ pyproject.toml          │ 140-180   │ Restructuration      │
+│ dqf/checks/__init__.py  │ 1-10      │ Simplification       │
+└─────────────────────────┴───────────┴──────────────────────┘
+
+TOTAL: 5 modifications dans 4 fichiers
+
+## VÉRIFICATION POST-CORRECTIONS
+
+✅ Import Python:
+   python -c "from dqf.checks.base import BaseCheck"
+   → Doit fonctionner sans erreur
+
+✅ Linting F821:
+   ruff check dqf/checks/base.py --select F821
+   → Doit afficher "All checks passed!" ou "Found 0 errors"
+
+✅ Module build:
+   python -c "import build"
+   → Doit fonctionner sans erreur
+
+✅ Tests unitaires:
+   pytest tests/unit/test_base_check.py -v
+   → Doit afficher "15 passed"
+

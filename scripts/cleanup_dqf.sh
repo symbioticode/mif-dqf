@@ -2,7 +2,7 @@
 # cleanup_dqf.sh
 # Script de nettoyage final du projet DQF v1.0.0
 # Supprime les fichiers temporaires, fake code, logs debug, backups et caches
-# Auteur : Andrei
+# Auteur : dravitch
 # Date   : 18 janvier 2026
 
 set -euo pipefail  # Sécurité : arrêt sur erreur, variables non définies, pipe fail

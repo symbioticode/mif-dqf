@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-02-13T03:32:24.114969",
+  "symbol": "BTC-USD",
+  "source": "test_fixture",
+  "metadata": {},
+  "data_info": {
+    "row_count": 10,
+    "columns": [
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "start_date": "2024-01-01 00:00:00+00:00",
+    "end_date": "2024-01-10 00:00:00+00:00",
+    "has_timezone": true
+  },
+  "validation_config": {
+    "enabled": true
+  },
+  "statistics": {
+    "close_mean": 106.5,
+    "close_std": 3.0276503540974917,
+    "close_min": 102.0,
+    "close_max": 111.0,
+    "volume_mean": 1045000.0,
+    "volume_sum": 10450000.0
+  }
+}

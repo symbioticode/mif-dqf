@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-02-13T03:27:37.654920",
+  "symbol": "BAD",
+  "source": "test",
+  "metadata": {},
+  "data_info": {
+    "row_count": 3,
+    "columns": [
+      "wrong_column"
+    ],
+    "start_date": null,
+    "end_date": null,
+    "has_timezone": false
+  },
+  "validation_config": {
+    "enabled": true
+  }
+}

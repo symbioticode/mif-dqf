@@ -7,11 +7,12 @@ Records provenance and validation metadata.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
 from dqf.checks.base import BaseCheck, CheckResult
+
 timestamp = datetime.now(timezone.utc).isoformat()
 
 
@@ -26,16 +27,16 @@ class ComprehensiveLoggingCheck(BaseCheck):
     - Configuration snapshot
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Comprehensive Logging check."""
         super().__init__(check_id="check_7_logging", check_name="Comprehensive Logging")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -73,14 +74,10 @@ class ComprehensiveLoggingCheck(BaseCheck):
                     "row_count": len(data),
                     "columns": list(data.columns),
                     "start_date": (
-                        str(data.index.min())
-                        if isinstance(data.index, pd.DatetimeIndex)
-                        else None
+                        str(data.index.min()) if isinstance(data.index, pd.DatetimeIndex) else None
                     ),
                     "end_date": (
-                        str(data.index.max())
-                        if isinstance(data.index, pd.DatetimeIndex)
-                        else None
+                        str(data.index.max()) if isinstance(data.index, pd.DatetimeIndex) else None
                     ),
                     "has_timezone": (
                         data.index.tz is not None
@@ -125,9 +122,7 @@ class ComprehensiveLoggingCheck(BaseCheck):
                     prov_path.mkdir(parents=True, exist_ok=True)
 
                     # Create filename
-                    safe_symbol = (
-                        (symbol or "unknown").replace("/", "_").replace(":", "_")
-                    )
+                    safe_symbol = (symbol or "unknown").replace("/", "_").replace(":", "_")
                     filename = f"{safe_symbol}_{timestamp.replace(':', '-')}.json"
                     filepath = prov_path / filename
 
