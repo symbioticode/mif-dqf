@@ -1,278 +1,186 @@
-# Justfile for DQF project
-# Usage: just <command>
+# Justfile — DQF
+# Usage: just <command>  |  just --list
 
 default: sanitize
 
-# === CODE QUALITY ===
+# ─────────────────────────────────────────────
+# CODE QUALITY
+# ─────────────────────────────────────────────
 
-# Format code with black
+# Format code (black + isort)
 format:
-    @echo " Formatting..."
-    black dqf tests examples || true
-    isort dqf tests examples || true
-    @echo " Formatting complete"
+    black dqf tests examples
+    isort dqf tests examples
 
-# Lint code
+# Lint (ruff + black check)
 lint:
-    @echo " Linting..."
     ruff check dqf tests examples
     black --check dqf tests examples
-    mypy dqf || true  # TODO: Fix remaining type hints in v1.0.1 || true
-    @echo " Linting OK"
 
-# Auto-fix linting issues
+# Auto-fix linting issues, then verify
 fix:
-    @echo " Auto-fix..."
     ruff check --fix dqf tests examples
     isort dqf tests examples
     black dqf tests examples
-    @echo " Auto-fix complete"
 
-# All in one code quality check
-sanitize:
-    @echo " SANITIZE..."
-    @python scripts/dqf_tools.py fix-encoding || true
-    @python scripts/dqf_tools.py check-encoding || true
-    @just format
-    @just lint
-    @just test
-    @echo " SANITIZE COMPLETE"
+# Fix encoding issues
+fix-encoding:
+    python scripts/dqf_tools.py fix-encoding
 
-# === TESTING ===
+# Full quality pipeline: fix → lint → test
+sanitize: fix lint test
+
+# ─────────────────────────────────────────────
+# TESTING
+# ─────────────────────────────────────────────
 
 # Run all tests
 test:
-    @echo " Tests..."
     pytest tests/ -v
 
-# Run tests with coverage
+# Run tests with coverage report
 test-cov:
-    @echo " Tests with coverage..."
     pytest tests/ -v --cov=dqf --cov-report=term-missing --cov-report=html
-
-# Run specific test file
-test-file FILE:
-    @echo " Testing {{FILE}}..."
-    pytest {{FILE}} -v
-
-# Run tests matching pattern
-test-match PATTERN:
-    @echo " Testing pattern: {{PATTERN}}..."
-    pytest tests/ -v -k "{{PATTERN}}"
-
-# Run integration tests only
-test-integration:
-    @echo " Integration tests..."
-    pytest tests/integration/ -v
 
 # Run unit tests only
 test-unit:
-    @echo " Unit tests..."
     pytest tests/unit/ -v
 
-# === EXAMPLES ===
+# Run integration tests only
+test-integration:
+    pytest tests/integration/ -v
 
-# Run all examples
+# Run tests matching a pattern
+test-match PATTERN:
+    pytest tests/ -v -k "{{PATTERN}}"
+
+# ─────────────────────────────────────────────
+# BASELINE
+# ─────────────────────────────────────────────
+
+# Minimal baseline (3 checks: imports, linting, tests) — used in CI
+baseline:
+    python scripts/baseline.py
+
+# Full validation (5 checks: tests, examples, linting, build, coherence)
+# Requires scripts/local/validate.py  →  git show ac5c04d:scripts/test_baseline_v1.0.0.py > scripts/local/validate.py
+validate:
+    @test -f scripts/local/validate.py || (echo "❌ scripts/local/validate.py not found — see justfile comment" && exit 1)
+    python scripts/local/validate.py
+
+# Full validation, skipping slow build step
+validate-fast:
+    @test -f scripts/local/validate.py || (echo "❌ scripts/local/validate.py not found" && exit 1)
+    python scripts/local/validate.py --no-build
+
+# ─────────────────────────────────────────────
+# EXAMPLES
+# ─────────────────────────────────────────────
+
+# Run all 4 examples
 run-examples:
-    @echo " Running examples..."
-    @python examples/01_basic_validation.py
-    @echo ""
-    @python examples/02_custom_config.py
-    @echo ""
-    @python examples/03_batch_processing.py
-    @echo ""
-    @python examples/04_custom_check.py
+    python examples/01_basic_validation.py
+    python examples/02_custom_config.py
+    python examples/03_batch_processing.py
+    python examples/04_custom_check.py
 
-# Run specific example
+# Run specific example by number (just example 1)
 example NUM:
-    @echo " Running example {{NUM}}..."
-    @python examples/0{{NUM}}_*.py
+    python examples/0{{NUM}}_*.py
 
-# === PACKAGE MANAGEMENT ===
+# ─────────────────────────────────────────────
+# PACKAGE
+# ─────────────────────────────────────────────
 
-# Install package in development mode
+# Install in editable mode with dev dependencies
 install-dev:
-    @echo " Installing in development mode..."
     pip install -e ".[dev]"
-    @echo " Package installed"
 
-# Install package with all extras
-install-all:
-    @echo " Installing with all extras..."
-    pip install -e ".[all]"
-    @echo " Package installed"
-
-# Build package (wheel + sdist)
+# Build wheel + sdist
 build:
-    @echo " Building package..."
     rm -rf build/ dist/ *.egg-info
     python -m build
-    @echo " Package built"
-    @ls -lh dist/
+    ls -lh dist/
 
-# Check package before publish
+# Verify package with twine
 check-package:
-    @echo " Checking package..."
     twine check dist/*
-    @echo " Package check OK"
 
-# Publish to TestPyPI
+# Publish to TestPyPI (safe test)
 publish-test:
-    @echo " Publishing to TestPyPI..."
     twine upload --repository testpypi dist/*
-    @echo " Published to TestPyPI"
 
-# Publish to PyPI (production)
+# Publish to PyPI (production — requires confirmation)
 publish:
-    @echo "  Publishing to PyPI (production)..."
-    @echo "Press Enter to continue, Ctrl+C to abort"
-    @read
+    @echo "⚠️  Publishing to PyPI (production). Press Enter to confirm, Ctrl+C to abort."
+    @read _confirm
     twine upload dist/*
-    @echo " Published to PyPI"
 
-# === CLEANUP ===
-
-# Clean Python artifacts
-clean:
-    @echo " Cleaning Python artifacts..."
-    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-    find . -type f -name "*.pyc" -delete 2>/dev/null || true
-    find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-    rm -rf .pytest_cache htmlcov .coverage build/ dist/
-    @echo " Cleaning complete"
-
-# Full cleanup + backup
-cleanup:
-    @echo " Full cleanup + backup..."
-    bash scripts/cleanup.sh
-    @echo " Cleanup complete"
-
-# Restore from backup
-restore:
-    @echo "  Restoring from backup..."
-    bash scripts/cleanup.sh restore
-
-# === GIT ===
-
-# Git sync (commit + push)
-sync MESSAGE:
-    @echo " Git sync..."
-    python scripts/git_sync.py "{{MESSAGE}}"
-    @echo " Sync complete"
-
-# Create git tag
-tag VERSION:
-    @echo "  Creating tag {{VERSION}}..."
-    git tag -a {{VERSION}} -m "Release {{VERSION}}"
-    git push origin {{VERSION}}
-    @echo " Tag {{VERSION}} created"
-
-# === DEVELOPMENT ===
-
-# Run all checks (format + lint + test)
-check: format lint test
-    @echo " All checks passed"
-
-# Quick validation (lint + test)
-validate: lint test
-    @echo " Validation OK"
-
-# === DOCUMENTATION ===
-
-# Generate API docs (placeholder)
-docs:
-    @echo " Generating docs..."
-    @echo "  Not implemented yet"
-
-# Serve docs locally (placeholder)
-docs-serve:
-    @echo " Serving docs..."
-    @echo "  Not implemented yet"
-
-# === UTILITIES ===
-
-# Show project stats
-stats:
-    @echo " Project Statistics"
-    @echo "===================="
-    @echo ""
-    @echo "Production code:"
-    @find dqf -name "*.py" ! -path "*/test*" ! -path "*/__pycache__/*" -exec wc -l {} + | tail -1
-    @echo ""
-    @echo "Test code:"
-    @find tests -name "*.py" ! -path "*/__pycache__/*" -exec wc -l {} + | tail -1
-    @echo ""
-    @echo "Example code:"
-    @find examples -name "*.py" ! -path "*/__pycache__/*" -exec wc -l {} + | tail -1
-    @echo ""
-    @echo "Git commits:"
-    @git log --oneline | wc -l
-    @echo ""
-    @echo "Coverage:"
-    @pytest tests/ --cov=dqf --cov-report=term 2>/dev/null | grep TOTAL || echo "Run 'just test-cov' first"
-
-# Check for non-ASCII characters
-check-encoding:
-    @python scripts/dqf_tools.py check-encoding
-
-# Fix non-ASCII characters
-fix-encoding:
-    @python scripts/dqf_tools.py fix-encoding
-
-# Run health checks
-doctor:
-    @python scripts/dqf_tools.py doctor
-
-# List available commands
-help:
-    @just --list
-
-# === ANTI-REGRESSION ===
-
-# Full anti-regression check before commit
-pre-commit:
-    @just sanitize
-    @echo ""
-    @echo " PRE-COMMIT CHECKS PASSED"
-    @echo "Ready to commit!"
-
-# Full validation pipeline (CI/CD style)
-ci: clean lint test-cov check-encoding
-    @echo ""
-    @echo " CI CHECKS PASSED"
-
-# === RELEASE WORKFLOW ===
-
-# Prepare release (bump version, build, check)
-prepare-release VERSION:
-    @echo " Preparing release {{VERSION}}..."
-    @echo "1. Update version in pyproject.toml"
-    @echo "2. Update CHANGELOG.md"
-    @echo "3. Commit changes"
-    @echo "4. Create tag"
+# Full release workflow: clean → validate → build → check
+release VERSION:
+    @echo "Preparing release {{VERSION}}..."
     @just clean
     @just sanitize
     @just build
     @just check-package
-    @echo " Release {{VERSION}} ready"
     @echo ""
-    @echo "Next steps:"
-    @echo "  1. Review dist/ files"
-    @echo "  2. Test install: pip install dist/*.whl"
-    @echo "  3. Publish test: just publish-test"
-    @echo "  4. Publish prod: just publish"
+    @echo "✅ Release {{VERSION}} ready. Next: just publish-test → just publish"
 
-# === SHORTCUTS ===
+# ─────────────────────────────────────────────
+# CLEANUP
+# ─────────────────────────────────────────────
 
-# Quick test + format
-qtest: format test
-    @echo " Quick test OK"
+# Remove Python artifacts and build files
+clean:
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find . -type f -name "*.pyc" -delete 2>/dev/null || true
+    find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+    rm -rf .pytest_cache htmlcov .coverage build/ dist/
 
-# Quick build + check
-qbuild: build check-package
-    @echo " Quick build OK"
+# Personal backup + cleanup  (requires scripts/local/cleanup.sh)
+backup:
+    @test -f scripts/local/cleanup.sh || (echo "❌ scripts/local/cleanup.sh not found — personal script, not in repo" && exit 1)
+    bash scripts/local/cleanup.sh
 
-# Optional: NixOS-specific (ignore if not using Nix)
+# Restore from personal backup  (requires scripts/local/cleanup.sh)
+restore:
+    @test -f scripts/local/cleanup.sh || (echo "❌ scripts/local/cleanup.sh not found" && exit 1)
+    bash scripts/local/cleanup.sh restore
+
+# ─────────────────────────────────────────────
+# GIT
+# ─────────────────────────────────────────────
+
+# Annotated tag + push
+tag VERSION MESSAGE:
+    git tag -a {{VERSION}} -m "{{MESSAGE}}"
+    git push origin {{VERSION}}
+
+# ─────────────────────────────────────────────
+# DIAGNOSTICS
+# ─────────────────────────────────────────────
+
+# Check non-ASCII characters
+check-encoding:
+    python scripts/dqf_tools.py check-encoding
+
+# Run environment doctor
+doctor:
+    python scripts/dqf_tools.py doctor
+
+# Project statistics
+stats:
+    @echo "Production code:"
+    @find dqf -name "*.py" ! -path "*/__pycache__/*" -exec wc -l {} + | tail -1
+    @echo "Test code:"
+    @find tests -name "*.py" ! -path "*/__pycache__/*" -exec wc -l {} + | tail -1
+    @echo "Git commits:"
+    @git log --oneline | wc -l
+
+# ─────────────────────────────────────────────
+# NixOS (local only)
+# ─────────────────────────────────────────────
+
+# Enter Nix dev shell
 nix-dev:
-    @echo " Nix devShell..."
     nix develop
