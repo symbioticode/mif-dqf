@@ -5,7 +5,7 @@ Defines configuration structure for DQF validation framework.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -18,7 +18,7 @@ class DQFConfig:
     configurations from YAML files or dictionaries.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         """
         Initialize DQF configuration.
 
@@ -39,7 +39,7 @@ class DQFConfig:
             >>> config = DQFConfig.from_yaml("my_config.yaml")
         """
         # Default configuration for all 7 checks
-        self.checks: Dict[str, Dict[str, Any]] = {
+        self.checks: dict[str, dict[str, Any]] = {
             "check_1_source": {
                 "enabled": True,
                 "require_metadata": False,
@@ -116,7 +116,7 @@ class DQFConfig:
         if not filepath_obj.exists():
             raise FileNotFoundError(f"Config file not found: {filepath}")
 
-        with open(filepath_obj, "r") as f:
+        with open(filepath_obj) as f:
             data = yaml.safe_load(f)
 
         # Extract checks dict if nested, otherwise use entire dict
@@ -125,7 +125,7 @@ class DQFConfig:
         return cls(**checks_data)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DQFConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "DQFConfig":
         """
         Create configuration from dictionary.
 
@@ -137,7 +137,7 @@ class DQFConfig:
         """
         return cls(**data)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Export configuration to dictionary.
 
@@ -159,7 +159,7 @@ class DQFConfig:
         with open(filepath_obj, "w") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)
 
-    def get_enabled_checks(self) -> Dict[int, Dict[str, Any]]:
+    def get_enabled_checks(self) -> dict[int, dict[str, Any]]:
         """
         Get dictionary of enabled checks with their configs.
 
@@ -205,7 +205,7 @@ class DQFConfig:
 
         return False
 
-    def get_check_config(self, check_id: int) -> Optional[Dict[str, Any]]:
+    def get_check_config(self, check_id: int) -> dict[str, Any] | None:
         """
         Get configuration for a specific check.
 
@@ -225,7 +225,5 @@ class DQFConfig:
 
     def __repr__(self) -> str:
         """String representation of config."""
-        enabled_count = sum(
-            1 for cfg in self.checks.values() if cfg.get("enabled", True)
-        )
+        enabled_count = sum(1 for cfg in self.checks.values() if cfg.get("enabled", True))
         return f"DQFConfig(checks={len(self.checks)}, enabled={enabled_count})"

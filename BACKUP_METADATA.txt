@@ -1,0 +1,48 @@
+DQF Backup Metadata
+==================
+
+Backup Name: dqf_v1.0.0_20260125_230457
+Created: 2026-01-25 23:04:57
+Git Tag: v1.0.0
+Source: /home/andrei/Projects/09_MIF/01-DQF/mif-dqf
+
+Purpose: Backup propre AVANT nettoyage final v1.0.0
+Status: État validé (104/104 tests PASS)
+
+Project Statistics:
+-------------------
+py_files: 458
+test_files: 17
+doc_files: 4
+total_lines: 140773
+
+Excluded Patterns:
+------------------
+- .git
+- __pycache__
+- *.pyc
+- *.pyo
+- .pytest_cache
+- .ruff_cache
+- .mypy_cache
+- htmlcov
+- .coverage
+- dist
+- build
+- *.egg-info
+- .venv
+- venv
+- .env
+- .env.*
+- result
+- result-*
+- .direnv
+
+Restoration:
+------------
+To restore this backup:
+    rsync -a --delete ../dqf-backups/dqf_v1.0.0_20260125_230457/ /path/to/project/
+
+Git Info:
+---------
+Last commit: d08d8ad release: DQF v1.0.0 - Production Ready

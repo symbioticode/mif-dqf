@@ -4,7 +4,7 @@ Check 6: Sanity Tests.
 Statistical and logical sanity checks on OHLCV data.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -23,16 +23,16 @@ class SanityTestsCheck(BaseCheck):
     - Prices are positive and realistic
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Sanity Tests check."""
         super().__init__(check_id="check_6_sanity", check_name="Sanity Tests")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -111,9 +111,7 @@ class SanityTestsCheck(BaseCheck):
                 lower_bound = q1 - volatility_multiplier * iqr
                 upper_bound = q3 + volatility_multiplier * iqr
 
-                outliers = (
-                    (data["close"] < lower_bound) | (data["close"] > upper_bound)
-                ).sum()
+                outliers = ((data["close"] < lower_bound) | (data["close"] > upper_bound)).sum()
                 details["price_outliers"] = int(outliers)
 
                 if outliers > 0:
@@ -125,9 +123,7 @@ class SanityTestsCheck(BaseCheck):
                     )
 
             # Check 4: Minimum price threshold
-            price_cols = [
-                c for c in ["open", "high", "low", "close"] if c in data.columns
-            ]
+            price_cols = [c for c in ["open", "high", "low", "close"] if c in data.columns]
             for col in price_cols:
                 too_low = (data[col] < min_price).sum()
                 if too_low > 0:

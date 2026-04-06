@@ -16,8 +16,7 @@ import numpy as np
 import pandas as pd
 
 from dqf.checks.check_2_integrity import IntegrityCheck
-from dqf.core.enums import (STATUS_ERROR, STATUS_FAIL, STATUS_PASS,
-                            STATUS_WARNING)
+from dqf.core.enums import STATUS_ERROR, STATUS_FAIL, STATUS_PASS, STATUS_WARNING
 
 
 class TestIntegrityCheck:

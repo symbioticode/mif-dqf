@@ -4,8 +4,6 @@ Unit tests for BaseCheck interface
 Tests abstract base class behavior and helpers.
 """
 
-from datetime import datetime
-
 import pandas as pd
 import pytest
 
@@ -148,34 +146,24 @@ class TestCheckResult:
 
     def test_is_passing_pass(self):
         """Test passed property for PASS."""
-        result = CheckResult(
-            check_name="test", status=STATUS_PASS, message="", details={}
-        )
+        result = CheckResult(check_name="test", status=STATUS_PASS, message="", details={})
         assert result.passed is True
 
     def test_is_passing_warn(self):
         """Test passed property for WARNING."""
-        result = CheckResult(
-            check_name="test", status=STATUS_WARNING, message="", details={}
-        )
+        result = CheckResult(check_name="test", status=STATUS_WARNING, message="", details={})
         # WARNING is not "passed" in strict sense
         assert result.passed is False
 
     def test_is_passing_fail(self):
         """Test failed property for FAIL."""
-        result = CheckResult(
-            check_name="test", status=STATUS_FAIL, message="", details={}
-        )
+        result = CheckResult(check_name="test", status=STATUS_FAIL, message="", details={})
         assert result.failed is True
 
     def test_is_critical_failure(self):
         """Test failed property identifies FAIL status."""
-        fail_result = CheckResult(
-            check_name="test", status=STATUS_FAIL, message="", details={}
-        )
-        pass_result = CheckResult(
-            check_name="test", status=STATUS_PASS, message="", details={}
-        )
+        fail_result = CheckResult(check_name="test", status=STATUS_FAIL, message="", details={})
+        pass_result = CheckResult(check_name="test", status=STATUS_PASS, message="", details={})
 
         assert fail_result.failed is True
         assert pass_result.failed is False

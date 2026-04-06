@@ -5,14 +5,14 @@ Calendar utilities for DQF
 Provides trading calendar detection and validation.
 """
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 import pandas as pd
 
 CalendarType = Literal["NYSE", "CRYPTO_24_7", "FOREX_24_5", "UNKNOWN"]
 
 
-def detect_calendar(symbol: str, data: Optional[pd.DataFrame] = None) -> CalendarType:
+def detect_calendar(symbol: str, data: pd.DataFrame | None = None) -> CalendarType:
     """
     Detect appropriate trading calendar based on symbol.
 
@@ -130,7 +130,7 @@ def should_remove_weekends(calendar: CalendarType) -> bool:
     return calendar in ["NYSE", "FOREX_24_5"]
 
 
-def get_major_us_holidays(year: int) -> List[pd.Timestamp]:
+def get_major_us_holidays(year: int) -> list[pd.Timestamp]:
     """
     Get major US market holidays for a given year.
 

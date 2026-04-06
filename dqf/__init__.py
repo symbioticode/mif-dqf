@@ -34,6 +34,7 @@ __email__ = "dravitch@example.com"
 
 # Base classes for custom checks
 from dqf.checks.base import BaseCheck, CheckIssue, CheckResult
+
 # Individual checks (for advanced usage)
 from dqf.checks.check_1_source import SourceUniquenessCheck
 from dqf.checks.check_2_integrity import IntegrityCheck  # CORRECT NAME
@@ -42,11 +43,14 @@ from dqf.checks.check_4_ffill import ForwardFillCheck  # CORRECT NAME
 from dqf.checks.check_5_trace import IndexTraceabilityCheck
 from dqf.checks.check_6_sanity import SanityTestsCheck
 from dqf.checks.check_7_logging import ComprehensiveLoggingCheck
+
 # Core classes (public API)
 from dqf.core.config import DQFConfig
+
 # Enums
 from dqf.core.report import DQFReport
 from dqf.core.validator import DQFValidator
+
 # Utils (for advanced usage)
 from dqf.utils.calendar import detect_calendar, is_weekend  # CORRECT NAMES
 

@@ -116,9 +116,7 @@ class TestForwardFillCheck:
         )
 
         check = ForwardFillCheck()
-        result = check.run(
-            data=df, columns_to_check=["open", "close"], warn_threshold=2
-        )
+        result = check.run(data=df, columns_to_check=["open", "close"], warn_threshold=2)
 
         #  FIX: Should detect sequence in close
         assert result.status in [STATUS_WARNING, STATUS_FAIL]
@@ -199,10 +197,7 @@ class TestForwardFillCheck:
         assert result.status in [STATUS_PASS, STATUS_WARNING, STATUS_FAIL]
 
         # Verify details exist (implementation might truncate sequences list)
-        assert (
-            "ffill_sequences" in result.details
-            or "max_consecutive_overall" in result.details
-        )
+        assert "ffill_sequences" in result.details or "max_consecutive_overall" in result.details
 
     def test_case_insensitive_columns(self):
         """Test column names are case-insensitive."""
@@ -216,9 +211,7 @@ class TestForwardFillCheck:
         )
 
         check = ForwardFillCheck()
-        result = check.run(
-            data=df, columns_to_check=["close"], warn_threshold=2  # Lowercase
-        )
+        result = check.run(data=df, columns_to_check=["close"], warn_threshold=2)  # Lowercase
 
         #  FIX: Should handle case-insensitive columns
         assert result.status in [STATUS_WARNING, STATUS_FAIL]

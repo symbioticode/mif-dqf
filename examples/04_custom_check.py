@@ -5,7 +5,7 @@ Example 04: Custom Check Implementation
 Demonstrates how to create and use custom validation checks.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -27,9 +27,9 @@ class CustomPatternCheck(BaseCheck):
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -130,16 +130,14 @@ class CustomVolumeCheck(BaseCheck):
 
     def __init__(self):
         """Initialize custom volume check."""
-        super().__init__(
-            check_id="check_9_volume", check_name="Volume Anomaly Detection"
-        )
+        super().__init__(check_id="check_9_volume", check_name="Volume Anomaly Detection")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -291,9 +289,7 @@ def main():
         if result.details:
             print(f"      Pump patterns: {result.details.get('pump_patterns', 0)}")
             print(f"      Dump patterns: {result.details.get('dump_patterns', 0)}")
-            print(
-                f"      Pump-dump patterns: {result.details.get('pump_dump_patterns', 0)}"
-            )
+            print(f"      Pump-dump patterns: {result.details.get('pump_dump_patterns', 0)}")
 
     # Example 2: Multiple custom checks
     print("\n" + "=" * 70)
@@ -329,9 +325,7 @@ def main():
     print("\n   📌 All Check Results:")
     for check_name, result in report2.check_results.items():
         status_icon = (
-            "✅"
-            if result.status == "PASS"
-            else "⚠️" if result.status == "WARNING" else "❌"
+            "✅" if result.status == "PASS" else "⚠️" if result.status == "WARNING" else "❌"
         )
         print(f"      {status_icon} {check_name}: {result.status}")
 

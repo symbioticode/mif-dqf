@@ -15,14 +15,13 @@ Usage:
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
 from dqf import DQFConfig, DQFValidator
 
 
-def create_sample_datasets() -> Dict[str, pd.DataFrame]:
+def create_sample_datasets() -> dict[str, pd.DataFrame]:
     """Create sample datasets for multiple symbols"""
     symbols = ["BTC-USD", "ETH-USD", "SPY", "GLD", "EUR-USD"]
     datasets = {}
@@ -67,8 +66,8 @@ def create_sample_datasets() -> Dict[str, pd.DataFrame]:
 
 
 def batch_validate_sequential(
-    datasets: Dict[str, pd.DataFrame], config: DQFConfig
-) -> Dict[str, object]:
+    datasets: dict[str, pd.DataFrame], config: DQFConfig
+) -> dict[str, object]:
     """Validate datasets sequentially"""
     print("🔄 Sequential Validation")
     print("-" * 70)
@@ -94,7 +93,7 @@ def batch_validate_sequential(
     return results
 
 
-def generate_summary_report(results: Dict[str, object]) -> None:
+def generate_summary_report(results: dict[str, object]) -> None:
     """Generate summary report across all validations"""
     print("=" * 70)
     print("📊 BATCH VALIDATION SUMMARY")
@@ -139,8 +138,8 @@ def generate_summary_report(results: Dict[str, object]) -> None:
 
 
 def filter_clean_datasets(
-    datasets: Dict[str, pd.DataFrame], results: Dict[str, object]
-) -> Dict[str, pd.DataFrame]:
+    datasets: dict[str, pd.DataFrame], results: dict[str, object]
+) -> dict[str, pd.DataFrame]:
     """Filter only datasets that passed validation"""
     print("🔍 Filtering Clean Datasets")
     print("-" * 70)
@@ -159,7 +158,7 @@ def filter_clean_datasets(
     return clean
 
 
-def export_results(results: Dict[str, object], output_dir: Path) -> None:
+def export_results(results: dict[str, object], output_dir: Path) -> None:
     """Export all reports to files"""
     print("💾 Exporting Results")
     print("-" * 70)
@@ -191,7 +190,7 @@ def export_results(results: Dict[str, object], output_dir: Path) -> None:
     print()
 
 
-def create_consolidated_report(results: Dict[str, object], output_path: Path) -> None:
+def create_consolidated_report(results: dict[str, object], output_path: Path) -> None:
     """Create single consolidated CSV report"""
     print("📄 Creating Consolidated Report")
     print("-" * 70)

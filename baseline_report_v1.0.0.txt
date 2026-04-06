@@ -1,0 +1,78 @@
+[22:56:44] INFO: 🚀 DÉBUT BASELINE NON-RÉGRESSION DQF v1.0.0
+[22:56:44] INFO: ======================================================================
+[22:56:44] INFO: ======================================================================
+[22:56:44] INFO: CHECK 1/5: Tests Pytest
+[22:56:44] INFO: ======================================================================
+[22:56:45] INFO:   ⚠️  pytest-cov non disponible, retry sans coverage...
+[22:56:47] INFO: ✅ tests/integration/test_validator.py::TestDQFValidatorIntegration::test_validator_clean_data PASSED [  0%]
+[22:56:47] INFO: ✅ CHECK 1/5: PASS - Tous les tests réussissent
+[22:56:47] INFO: 
+======================================================================
+[22:56:47] INFO: CHECK 2/5: Examples
+[22:56:47] INFO: ======================================================================
+[22:56:47] INFO:   ℹ️  Skipping: examples/02_custom_config.py (interactif - input())
+[22:56:47] INFO: Running: examples/01_basic_validation.py (timeout=30s)
+[22:56:48] INFO:   ✅ 01_basic_validation.py OK
+[22:56:48] INFO:   ✅ 01_basic_validation.py OK
+[22:56:48] INFO: Running: examples/03_batch_processing.py (timeout=60s)
+[22:56:48] INFO:   ❌ 03_batch_processing.py FAILED
+[22:56:48] INFO:   Stderr: Traceback (most recent call last):
+  File "/home/andrei/Projects/09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py", line 341, in <module>
+    main()
+  File "/home/andrei/Projects/09_MIF/01-DQF/mi
+[22:56:48] INFO:   ❌ 03_batch_processing.py FAILED
+[22:56:48] INFO:   Stderr: Traceback (most recent call last):
+  File "/home/andrei/Projects/09_MIF/01-DQF/mif-dqf/examples/03_batch_processing.py", line 341, in <module>
+    main()
+  File "/home/andrei/Projects/09_MIF/01-DQF/mi
+[22:56:48] INFO: Running: examples/04_custom_check.py (timeout=30s)
+[22:56:49] INFO:   ✅ 04_custom_check.py OK
+[22:56:49] INFO:   ✅ 04_custom_check.py OK
+[22:56:49] INFO: ❌ CHECK 2/5: FAIL - Certains examples échoués
+[22:56:49] INFO: 
+======================================================================
+[22:56:49] INFO: CHECK 3/5: Linting (ruff)
+[22:56:49] INFO: ======================================================================
+[22:56:49] INFO:   Auto-fix en cours...
+[22:56:49] INFO: ✅ CHECK 3/5: PASS - 0 erreurs linting (après auto-fix)
+[22:56:49] INFO: 
+======================================================================
+[22:56:49] INFO: CHECK 4/5: Build Package
+[22:56:49] INFO: ======================================================================
+[22:56:50] INFO: ❌ CHECK 4/5: FAIL - Build échoué
+[22:56:50] INFO: Stderr:
+usage: python -m build [-h] [--version] [--verbose] [--sdist] [--wheel]
+                       [--outdir PATH] [--skip-dependency-check]
+                       [--no-isolation | --installer {pip,uv}]
+                       [--config-setting KEY[=VALUE] | --config-json
+                       JSON_STRING]
+                       [srcdir]
+python -m build: error: unrecognized arguments: --quiet
+
+[22:56:50] INFO: 
+======================================================================
+[22:56:50] INFO: CHECK 5/5: Cohérence Fichiers
+[22:56:50] INFO: ======================================================================
+[22:56:50] INFO:   ✅ README.md (18240 bytes)
+[22:56:50] INFO:   ✅ LICENSE (1065 bytes)
+[22:56:50] INFO:   ✅ pyproject.toml (4504 bytes)
+[22:56:50] INFO:   ✅ .gitignore (304 bytes)
+[22:56:50] INFO:   ✅ CONTRIBUTING.md (12094 bytes)
+[22:56:50] INFO:   ✅ docs/API.md (62075 bytes)
+[22:56:50] INFO:   ✅ docs/ARCHITECTURE.md (24238 bytes)
+[22:56:50] INFO:   ✅ docs/TROUBLESHOOTING.md (17397 bytes)
+[22:56:50] INFO:   ✅ docs/DQF_PROJECT.md (5888 bytes)
+[22:56:50] INFO:   ✅ dqf/__init__.py (2516 bytes)
+[22:56:50] INFO:   ✅ tests/conftest.py (2553 bytes)
+[22:56:50] INFO:   ❌ Référence obsolète 'symbioticode' (Repository GitHub)
+[22:56:50] INFO:   ❌ Référence obsolète 'corail.synergia@proton.me' (Email)
+[22:56:50] INFO: ❌ CHECK 5/5: FAIL - Problèmes cohérence
+[22:56:50] INFO: 
+======================================================================
+[22:56:50] INFO: RAPPORT BASELINE NON-RÉGRESSION
+[22:56:50] INFO: ======================================================================
+[22:56:50] INFO: Date: 2026-02-12 22:56:50
+[22:56:50] INFO: Checks Passed: 2/5
+[22:56:50] INFO: Checks Failed: 3/5
+[22:56:50] INFO: 
+❌ BASELINE INVALIDE - Corriger avant nettoyage

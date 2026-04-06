@@ -57,9 +57,7 @@ class TestSourceUniquenessCheck:
         """Test metadata is captured when provided."""
         check = SourceUniquenessCheck()
 
-        result = check.run(
-            data=clean_ohlcv_data, source="yahoo_finance", metadata=minimal_metadata
-        )
+        result = check.run(data=clean_ohlcv_data, source="yahoo_finance", metadata=minimal_metadata)
 
         assert result.status == STATUS_PASS
         #  FIX: Implementation might not store metadata in details
@@ -88,9 +86,7 @@ class TestSourceUniquenessCheck:
         """Test WARN when large gap detected (possible mixed sources)."""
         check = SourceUniquenessCheck()
 
-        result = check.run(
-            data=data_with_large_gap, source="test_source", max_gap_days=30
-        )
+        result = check.run(data=data_with_large_gap, source="test_source", max_gap_days=30)
 
         assert result.status == STATUS_WARNING
         #  FIX: Implementation returns generic message
@@ -104,9 +100,7 @@ class TestSourceUniquenessCheck:
         """Test PASS when gaps are within threshold."""
         check = SourceUniquenessCheck()
 
-        result = check.run(
-            data=clean_ohlcv_data, source="yahoo_finance", max_gap_days=30
-        )
+        result = check.run(data=clean_ohlcv_data, source="yahoo_finance", max_gap_days=30)
 
         # Daily data should have max 1-day gaps
         assert result.status == STATUS_PASS

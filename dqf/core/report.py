@@ -7,15 +7,15 @@ Generates comprehensive validation reports.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
 from dqf.checks.base import CheckResult
-from dqf.core.enums import (STATUS_ERROR, STATUS_FAIL, STATUS_PASS,
-                            STATUS_WARNING)
+from dqf.core.enums import STATUS_ERROR, STATUS_FAIL, STATUS_PASS, STATUS_WARNING
 
 timestamp = datetime.now(timezone.utc).isoformat()
+
 
 class DQFReport:
     """
@@ -26,10 +26,10 @@ class DQFReport:
 
     def __init__(
         self,
-        results: List[CheckResult],
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        results: list[CheckResult],
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Initialize validation report.
@@ -65,7 +65,7 @@ class DQFReport:
         else:
             self.overall_status = STATUS_PASS
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Export report to dictionary.
 
@@ -112,7 +112,7 @@ class DQFReport:
             ],
         }
 
-    def to_yaml(self, filepath: Optional[str] = None) -> Optional[str]:
+    def to_yaml(self, filepath: str | None = None) -> str | None:
         """
         Export report to YAML format.
 
@@ -133,7 +133,7 @@ class DQFReport:
 
         return yaml_str
 
-    def to_json(self, filepath: Optional[str] = None, indent: int = 2) -> Optional[str]:
+    def to_json(self, filepath: str | None = None, indent: int = 2) -> str | None:
         """
         Export report to JSON format.
 
@@ -195,7 +195,7 @@ class DQFReport:
 
         print("\n" + "=" * 70)
 
-    def get_failed_checks(self) -> List[CheckResult]:
+    def get_failed_checks(self) -> list[CheckResult]:
         """
         Get list of failed checks.
 
@@ -204,7 +204,7 @@ class DQFReport:
         """
         return [r for r in self.results if r.status in {STATUS_FAIL, STATUS_ERROR}]
 
-    def get_warning_checks(self) -> List[CheckResult]:
+    def get_warning_checks(self) -> list[CheckResult]:
         """
         Get list of checks with warnings.
 
@@ -213,7 +213,7 @@ class DQFReport:
         """
         return [r for r in self.results if r.status == STATUS_WARNING]
 
-    def get_passed_checks(self) -> List[CheckResult]:
+    def get_passed_checks(self) -> list[CheckResult]:
         """
         Get list of passed checks.
 
@@ -250,7 +250,7 @@ class DQFReport:
         return (self.checks_failed + self.checks_error) > 0
 
     @property
-    def all_issues(self) -> List[Any]:
+    def all_issues(self) -> list[Any]:
         """
         Get all issues from all check results.
 
@@ -264,7 +264,7 @@ class DQFReport:
         return issues
 
     @property
-    def check_results(self) -> Dict[str, CheckResult]:
+    def check_results(self) -> dict[str, CheckResult]:
         """
         Get check results as a dictionary keyed by check name.
 
@@ -282,4 +282,6 @@ class DQFReport:
 
     def __str__(self) -> str:
         """Human-readable string representation."""
-        return f"DQF Report: {self.overall_status} ({self.checks_passed}/{self.total_checks} passed)"
+        return (
+            f"DQF Report: {self.overall_status} ({self.checks_passed}/{self.total_checks} passed)"
+        )

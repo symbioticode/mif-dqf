@@ -1,0 +1,583 @@
+# Contributing to DQF
+
+Thank you for your interest in contributing to DQF (Data Quality Framework)! 🎉
+
+This document provides guidelines and best practices for contributing.
+
+---
+
+## 📋 Table of Contents
+
+1. [Code of Conduct](#code-of-conduct)
+2. [How Can I Contribute?](#how-can-i-contribute)
+3. [Development Setup](#development-setup)
+4. [Pull Request Process](#pull-request-process)
+5. [Coding Standards](#coding-standards)
+6. [Testing Guidelines](#testing-guidelines)
+7. [Documentation](#documentation)
+
+---
+
+## 📜 Code of Conduct
+
+### Our Pledge
+
+We pledge to make participation in DQF a harassment-free experience for everyone, regardless of age, body size, disability, ethnicity, gender identity, level of experience, nationality, personal appearance, race, religion, or sexual identity and orientation.
+
+### Our Standards
+
+**Positive Behavior**:
+- ✅ Using welcoming and inclusive language
+- ✅ Being respectful of differing viewpoints
+- ✅ Gracefully accepting constructive criticism
+- ✅ Focusing on what is best for the community
+- ✅ Showing empathy towards others
+
+**Unacceptable Behavior**:
+- ❌ Harassment, trolling, or insulting comments
+- ❌ Personal or political attacks
+- ❌ Publishing others' private information
+- ❌ Other conduct inappropriate in a professional setting
+
+### Enforcement
+
+Instances of abusive behavior may be reported to the project maintainers. All complaints will be reviewed and investigated promptly and fairly.
+
+---
+
+## 🤝 How Can I Contribute?
+
+### Reporting Bugs
+
+**Before Submitting**:
+1. Check [existing issues](https://github.com/symbioticode/mif-dqf/issues)
+2. Verify with latest version
+3. Gather reproduction steps
+
+**Bug Report Template**:
+```markdown
+**Environment**:
+- DQF Version: 1.0.0
+- Python Version: 3.11
+- OS: Ubuntu 22.04
+
+**Description**:
+Clear description of the bug.
+
+**Reproduction Steps**:
+1. Step 1
+2. Step 2
+3. Step 3
+
+**Expected Behavior**:
+What should happen.
+
+**Actual Behavior**:
+What actually happens.
+
+**Error Output**:
+```
+[Paste full error traceback]
+```
+
+**Minimal Reproducible Example**:
+```python
+import pandas as pd
+from dqf import DQFValidator, DQFConfig
+
+# Minimal code that reproduces the bug
+...
+```
+```
+
+---
+
+### Suggesting Features
+
+**Feature Request Template**:
+```markdown
+**Problem Statement**:
+What problem does this feature solve?
+
+**Proposed Solution**:
+Describe your proposed feature.
+
+**Alternatives Considered**:
+What other solutions did you consider?
+
+**Use Case**:
+Real-world scenario where this is useful.
+
+**Example Usage**:
+```python
+# How the feature would be used
+config = DQFConfig(new_feature={...})
+```
+```
+
+---
+
+### Submitting Pull Requests
+
+We welcome code contributions! Follow these steps:
+
+1. **Fork Repository**
+   ```bash
+   git clone https://github.com/symbioticode/dqf.git
+   cd dqf
+   ```
+
+2. **Create Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   # or
+   git checkout -b fix/your-bug-fix
+   ```
+
+3. **Make Changes**
+   - Write code
+   - Add tests
+   - Update documentation
+
+4. **Test Locally**
+   ```bash
+   pytest tests/ -v
+   ruff check dqf tests examples
+   black dqf tests examples --check
+   ```
+
+5. **Commit Changes**
+   ```bash
+   git add .
+   git commit -m "feat: add amazing feature"
+   ```
+   
+   Follow [Conventional Commits](https://www.conventionalcommits.org/):
+   - `feat:` New feature
+   - `fix:` Bug fix
+   - `docs:` Documentation only
+   - `test:` Adding tests
+   - `refactor:` Code refactoring
+   - `perf:` Performance improvement
+   - `chore:` Maintenance tasks
+
+6. **Push Branch**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+7. **Open Pull Request**
+   - Go to GitHub repository
+   - Click "New Pull Request"
+   - Fill out PR template
+   - Request review
+
+---
+
+## 🛠️ Development Setup
+
+### Requirements
+
+- Python 3.10+
+- pip
+- git
+
+### Installation
+
+```bash
+# Clone repository
+git clone https://github.com/symbioticode/mif-dqf.git
+cd mif-dqf
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
+
+# Verify installation
+pytest tests/ -v
+```
+
+### Development Tools
+
+**Installed Automatically**:
+- `pytest`: Testing framework
+- `pytest-cov`: Coverage reporting
+- `black`: Code formatting
+- `isort`: Import sorting
+- `ruff`: Fast linting
+- `mypy`: Type checking
+
+**Commands**:
+```bash
+# Run tests
+pytest tests/ -v
+
+# Run tests with coverage
+pytest tests/ --cov=dqf --cov-report=html
+
+# Format code
+black dqf tests examples
+isort dqf tests examples
+
+# Lint code
+ruff check dqf tests examples
+
+# Type check
+mypy dqf
+
+# Run all checks
+pytest tests/ -v && \
+ruff check dqf tests examples && \
+black dqf tests examples --check && \
+mypy dqf
+```
+
+---
+
+## 📝 Pull Request Process
+
+### Before Submitting
+
+**Checklist**:
+- [ ] Code follows style guidelines
+- [ ] All tests pass locally
+- [ ] New tests added (if applicable)
+- [ ] Documentation updated (if applicable)
+- [ ] Commit messages follow convention
+- [ ] PR description is clear
+
+### PR Template
+
+```markdown
+## Description
+Brief description of changes.
+
+## Type of Change
+- [ ] Bug fix (non-breaking)
+- [ ] New feature (non-breaking)
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Related Issues
+Fixes #123
+
+## Changes Made
+- Change 1
+- Change 2
+- Change 3
+
+## Testing
+How was this tested?
+
+## Checklist
+- [ ] Tests pass locally
+- [ ] Code follows style guide
+- [ ] Documentation updated
+- [ ] No breaking changes (or documented)
+```
+
+### Review Process
+
+1. **Maintainer Review**: 1-3 days
+2. **Feedback**: Address comments
+3. **Approval**: At least 1 maintainer approval
+4. **Merge**: Squash and merge to main
+
+---
+
+## 🎨 Coding Standards
+
+### Style Guide
+
+**Python Style**: [PEP 8](https://pep8.org/) + Black
+
+**Key Rules**:
+- Line length: 100 characters
+- Indentation: 4 spaces
+- Quotes: Double quotes for strings
+- Imports: Sorted with isort
+
+**Example**:
+```python
+"""Module docstring.
+
+Detailed description of module purpose.
+"""
+
+from datetime import datetime
+from typing import Dict, List, Optional
+
+import pandas as pd
+
+from dqf.checks.base import BaseCheck, CheckResult
+
+
+class ExampleCheck(BaseCheck):
+    """Example check implementation.
+    
+    Args:
+        param1: Description of param1
+        param2: Description of param2
+    
+    Example:
+        >>> check = ExampleCheck(param1=10)
+        >>> result = check.run(df)
+    """
+    
+    def __init__(self, param1: int = 10, param2: str = "default") -> None:
+        super().__init__(
+            check_id="check_example",
+            check_name="Example Check"
+        )
+        self.param1 = param1
+        self.param2 = param2
+    
+    def run(self, df: pd.DataFrame, **kwargs) -> CheckResult:
+        """Execute check on DataFrame.
+        
+        Args:
+            df: DataFrame to validate
+            **kwargs: Additional parameters
+        
+        Returns:
+            CheckResult with validation results
+        
+        Raises:
+            TypeError: If df is not a DataFrame
+        """
+        self._validate_dataframe(df)
+        
+        # Check logic here
+        ...
+        
+        return self._create_result(
+            status="PASS",
+            message="Check passed successfully"
+        )
+```
+
+### Docstrings
+
+**Format**: Google Style
+
+**Required**:
+- Module docstring
+- Class docstring
+- Public method docstring
+
+**Example**:
+```python
+def example_function(param1: int, param2: str = "default") -> Dict[str, int]:
+    """One-line summary.
+    
+    Detailed description of what function does.
+    Can span multiple lines.
+    
+    Args:
+        param1: Description of param1
+        param2: Description of param2 (optional, default: "default")
+    
+    Returns:
+        Dictionary mapping strings to integers
+        
+    Raises:
+        ValueError: If param1 is negative
+    
+    Example:
+        >>> result = example_function(10, "test")
+        >>> print(result)
+        {'test': 10}
+    """
+    if param1 < 0:
+        raise ValueError("param1 must be non-negative")
+    
+    return {param2: param1}
+```
+
+### Type Hints
+
+**Required** for:
+- Function parameters
+- Function return types
+- Class attributes
+
+**Example**:
+```python
+from typing import Dict, List, Optional
+
+def process_data(
+    data: pd.DataFrame,
+    config: Optional[Dict[str, int]] = None
+) -> List[str]:
+    """Process data and return list of strings."""
+    ...
+```
+
+---
+
+## 🧪 Testing Guidelines
+
+### Test Structure
+
+```
+tests/
+├── unit/                  # Unit tests (isolate components)
+│   ├── test_base_check.py
+│   ├── test_check_1_source.py
+│   └── ...
+├── integration/           # Integration tests (end-to-end)
+│   ├── test_validator.py
+│   └── test_report.py
+└── conftest.py           # Pytest fixtures
+```
+
+### Writing Tests
+
+**Naming**:
+- File: `test_<module>.py`
+- Class: `Test<ClassName>`
+- Method: `test_<description>`
+
+**Example**:
+```python
+"""Tests for ExampleCheck."""
+
+import pandas as pd
+import pytest
+
+from dqf.checks.example import ExampleCheck
+
+
+class TestExampleCheck:
+    """Test suite for ExampleCheck."""
+    
+    def test_pass_on_valid_data(self):
+        """Test check passes on valid data."""
+        # Arrange
+        data = pd.DataFrame({
+            "open": [100, 101],
+            "high": [105, 106],
+            "low": [95, 96],
+            "close": [102, 103],
+            "volume": [1000, 1100]
+        })
+        check = ExampleCheck()
+        
+        # Act
+        result = check.run(data)
+        
+        # Assert
+        assert result.status == "PASS"
+        assert "successfully" in result.message.lower()
+    
+    def test_fail_on_invalid_data(self):
+        """Test check fails on invalid data."""
+        # Arrange
+        data = pd.DataFrame({
+            "open": [100, 101],
+            "high": [90, 91],  # Invalid: high < open
+            "low": [95, 96],
+            "close": [102, 103],
+            "volume": [1000, 1100]
+        })
+        check = ExampleCheck()
+        
+        # Act
+        result = check.run(data)
+        
+        # Assert
+        assert result.status == "FAIL"
+        assert result.severity == "CRITICAL"
+    
+    def test_raises_on_non_dataframe(self):
+        """Test check raises TypeError on non-DataFrame."""
+        # Arrange
+        check = ExampleCheck()
+        
+        # Act & Assert
+        with pytest.raises(TypeError, match=r"Expected pd\.DataFrame"):
+            check.run([1, 2, 3])
+```
+
+### Coverage Requirements
+
+- **Minimum**: 75% overall
+- **Target**: 85%+ per module
+- **Critical paths**: 100%
+
+**Check Coverage**:
+```bash
+pytest tests/ --cov=dqf --cov-report=html
+open htmlcov/index.html
+```
+
+---
+
+## 📚 Documentation
+
+### Documentation Types
+
+1. **Code Documentation**: Docstrings (required)
+2. **API Reference**: docs/API.md (maintainer updates)
+3. **Architecture**: docs/ARCHITECTURE.md (major changes only)
+4. **Examples**: examples/*.py (new features)
+
+### Updating Documentation
+
+**When to Update**:
+- New feature → Add example + API docs
+- Bug fix → Update existing docs if wrong
+- Breaking change → Update all affected docs
+
+**API Documentation Format**:
+```markdown
+### new_method()
+
+```python
+def new_method(param1: str, param2: int = 10) -> bool:
+```
+
+**Description**: What the method does.
+
+**Parameters**:
+- `param1` (str): Description of param1
+- `param2` (int, optional): Description (default: 10)
+
+**Returns**:
+- `bool`: True if success
+
+**Raises**:
+- `ValueError`: If param1 is empty
+
+**Example**:
+```python
+result = obj.new_method("test", param2=20)
+print(result)  # True
+```
+```
+
+---
+
+## 🎯 Good First Issues
+
+New to DQF? Look for issues tagged:
+- `good-first-issue`: Easy, well-defined tasks
+- `documentation`: Improve docs
+- `help-wanted`: Need community help
+
+---
+
+## 💬 Questions?
+
+- **GitHub Discussions**: Ask questions, share ideas
+- **Issues**: Report bugs, request features
+- **Email**: corail.synergia@proton.me
+
+---
+
+**Thank you for contributing to DQF!** 🙏
+
+Every contribution, no matter how small, is valued and appreciated.

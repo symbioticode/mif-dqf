@@ -5,7 +5,7 @@ Main validation orchestrator that executes all configured checks.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -30,8 +30,8 @@ class DQFValidator:
 
     def __init__(
         self,
-        config: Optional[DQFConfig] = None,
-        enabled_checks: Optional[List[int]] = None,
+        config: DQFConfig | None = None,
+        enabled_checks: list[int] | None = None,
     ):
         """
         Initialize DQF validator.
@@ -88,8 +88,7 @@ class DQFValidator:
                 if num in check_id_map
             }
             self.enabled_checks = {
-                check_id: self.config.checks.get(check_id, {})
-                for check_id in self.checks.keys()
+                check_id: self.config.checks.get(check_id, {}) for check_id in self.checks.keys()
             }
         else:
             #  CRITICAL FIX: Use config to determine enabled checks
@@ -112,11 +111,9 @@ class DQFValidator:
                     self.enabled_checks[check_id] = check_config
 
         # Storage for custom checks
-        self.custom_checks: Dict[str, BaseCheck] = {}
+        self.custom_checks: dict[str, BaseCheck] = {}
 
-        self.logger.info(
-            f"DQFValidator initialized with {len(self.enabled_checks)} enabled checks"
-        )
+        self.logger.info(f"DQFValidator initialized with {len(self.enabled_checks)} enabled checks")
 
     def add_custom_check(self, check_id: str, check: BaseCheck) -> None:
         """
@@ -135,9 +132,7 @@ class DQFValidator:
             >>> validator.add_custom_check('check_8_custom', MyCheck())
         """
         if not isinstance(check, BaseCheck):
-            raise TypeError(
-                f"Custom check must inherit from BaseCheck, got {type(check)}"
-            )
+            raise TypeError(f"Custom check must inherit from BaseCheck, got {type(check)}")
 
         self.custom_checks[check_id] = check
         self.logger.info(f"Added custom check: {check_id}")
@@ -145,9 +140,9 @@ class DQFValidator:
     def validate(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> DQFReport:
         """
@@ -165,7 +160,7 @@ class DQFValidator:
         """
         self.logger.info(f"Starting DQF validation for {symbol or 'unknown'}")
 
-        results: List[CheckResult] = []
+        results: list[CheckResult] = []
 
         #  FIX: Execute only enabled checks
         for check_id in sorted(self.enabled_checks.keys()):
@@ -199,17 +194,13 @@ class DQFValidator:
                 self.logger.debug(f"Check {check_id} completed: {result.status}")
 
             except Exception as e:
-                self.logger.error(
-                    f"Check {check_id} failed with error: {e}", exc_info=True
-                )
+                self.logger.error(f"Check {check_id} failed with error: {e}", exc_info=True)
 
                 # Create error result
                 from dqf.core.enums import SEVERITY_CRITICAL, STATUS_ERROR
 
                 error_result = CheckResult(
-                    check_name=(
-                        check_name if "check_name" in locals() else f"Check {check_id}"
-                    ),
+                    check_name=(check_name if "check_name" in locals() else f"Check {check_id}"),
                     status=STATUS_ERROR,
                     severity=SEVERITY_CRITICAL,
                     message=f"Check execution error: {str(e)}",
@@ -237,14 +228,10 @@ class DQFValidator:
 
                 results.append(result)
 
-                self.logger.debug(
-                    f"Custom check {custom_id} completed: {result.status}"
-                )
+                self.logger.debug(f"Custom check {custom_id} completed: {result.status}")
 
             except Exception as e:
-                self.logger.error(
-                    f"Custom check {custom_id} failed with error: {e}", exc_info=True
-                )
+                self.logger.error(f"Custom check {custom_id} failed with error: {e}", exc_info=True)
 
                 from dqf.core.enums import SEVERITY_CRITICAL, STATUS_ERROR
 
@@ -277,7 +264,7 @@ class DQFValidator:
 
         return report
 
-    def get_enabled_check_ids(self) -> List[str]:
+    def get_enabled_check_ids(self) -> list[str]:
         """
         Get list of enabled check IDs.
 
@@ -303,7 +290,4 @@ class DQFValidator:
         enabled_ids = self.get_enabled_check_ids()
         custom_count = len(self.custom_checks)
 
-        return (
-            f"DQFValidator(enabled_checks={enabled_ids}, "
-            f"custom_checks={custom_count})"
-        )
+        return f"DQFValidator(enabled_checks={enabled_ids}, " f"custom_checks={custom_count})"

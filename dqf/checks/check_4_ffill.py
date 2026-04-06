@@ -4,14 +4,21 @@ Check 4: Forward Fill Detection
 Detects excessive forward-fill sequences in price data.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
 from dqf.checks.base import BaseCheck, CheckResult
-from dqf.core.enums import (SEVERITY_CRITICAL, SEVERITY_ERROR, SEVERITY_INFO,
-                            SEVERITY_WARNING, STATUS_ERROR, STATUS_FAIL,
-                            STATUS_PASS, STATUS_WARNING)
+from dqf.core.enums import (
+    SEVERITY_CRITICAL,
+    SEVERITY_ERROR,
+    SEVERITY_INFO,
+    SEVERITY_WARNING,
+    STATUS_ERROR,
+    STATUS_FAIL,
+    STATUS_PASS,
+    STATUS_WARNING,
+)
 
 
 class ForwardFillCheck(BaseCheck):
@@ -21,16 +28,16 @@ class ForwardFillCheck(BaseCheck):
     Detects sequences of identical consecutive values (potential forward-fill).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Forward Fill check."""
         super().__init__(check_id="check_4_ffill", check_name="Forward Fill Detection")
 
     def run(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str] = None,
-        source: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        symbol: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> CheckResult:
         """
@@ -92,7 +99,7 @@ class ForwardFillCheck(BaseCheck):
             total_ffill_rows = 0
 
             # Analyze each column
-            for col_name, col_actual in zip(check_lower, columns_actual):
+            for col_name, col_actual in zip(check_lower, columns_actual, strict=True):
                 series = data[col_actual]
 
                 # Skip if all NaN

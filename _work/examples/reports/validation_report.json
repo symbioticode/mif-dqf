@@ -1,0 +1,177 @@
+{
+  "report_metadata": {
+    "timestamp": "2026-02-13T03:56:48.201874",
+    "symbol": null,
+    "source": null,
+    "metadata": {}
+  },
+  "summary": {
+    "overall_status": "WARNING",
+    "total_checks": 7,
+    "checks_passed": 5,
+    "checks_failed": 0,
+    "checks_warning": 2,
+    "checks_error": 0
+  },
+  "results": [
+    {
+      "check_name": "Source Uniqueness",
+      "status": "WARNING",
+      "severity": "WARNING",
+      "message": "Source validation passed with 1 warnings",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "row_count": 188,
+        "warnings": [
+          {
+            "severity": "WARNING",
+            "message": "No source identifier provided"
+          }
+        ]
+      },
+      "issues": []
+    },
+    {
+      "check_name": "OHLCV Integrity",
+      "status": "PASS",
+      "severity": "INFO",
+      "message": "OHLCV integrity validated successfully",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "row_count": 188,
+        "violations": {},
+        "violation_breakdown": {},
+        "total_violations": 0,
+        "violation_rate": 0.0
+      },
+      "issues": []
+    },
+    {
+      "check_name": "Calendar Alignment",
+      "status": "WARNING",
+      "severity": "WARNING",
+      "message": "Calendar alignment passed with 1 warnings",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "row_count": 188,
+        "timezone": "UTC",
+        "weekend_rows": 53,
+        "detected_calendar": "CRYPTO_24_7",
+        "inferred_frequency": "D",
+        "warnings": [
+          {
+            "severity": "WARNING",
+            "message": "Found 53 weekend entries"
+          }
+        ]
+      },
+      "issues": []
+    },
+    {
+      "check_name": "Forward Fill Detection",
+      "status": "PASS",
+      "severity": "INFO",
+      "message": "No excessive forward-fill detected",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "row_count": 188,
+        "columns_checked": [
+          "close"
+        ],
+        "ffill_sequences": {},
+        "max_consecutive_overall": 0,
+        "total_ffill_rows": 0
+      },
+      "issues": []
+    },
+    {
+      "check_name": "Index Traceability",
+      "status": "PASS",
+      "severity": "INFO",
+      "message": "Index traceability validated successfully",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "row_count": 188,
+        "index_type": "DatetimeIndex",
+        "duplicate_count": 0,
+        "is_sorted": true,
+        "has_timezone": true,
+        "timezone": "UTC",
+        "inferred_frequency": "D",
+        "start_date": "2024-01-01 00:00:00+00:00",
+        "end_date": "2024-07-06 00:00:00+00:00",
+        "time_span_days": 187
+      },
+      "issues": []
+    },
+    {
+      "check_name": "Sanity Tests",
+      "status": "PASS",
+      "severity": "INFO",
+      "message": "All sanity checks passed",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "row_count": 188,
+        "anomalies_count": 0,
+        "extreme_returns": 0,
+        "zero_volume_days": 0,
+        "price_outliers": 0,
+        "nan_count": 0,
+        "inf_count": 0,
+        "volume_spikes": 0
+      },
+      "issues": []
+    },
+    {
+      "check_name": "Comprehensive Logging",
+      "status": "PASS",
+      "severity": "INFO",
+      "message": "Comprehensive logging completed successfully",
+      "details": {
+        "symbol": null,
+        "source": null,
+        "timestamp": "2026-02-13T03:56:48.201156",
+        "provenance_saved": true,
+        "provenance": {
+          "timestamp": "2026-02-13T03:56:48.201156",
+          "symbol": null,
+          "source": null,
+          "metadata": {},
+          "data_info": {
+            "row_count": 188,
+            "columns": [
+              "open",
+              "high",
+              "low",
+              "close",
+              "volume"
+            ],
+            "start_date": "2024-01-01 00:00:00+00:00",
+            "end_date": "2024-07-06 00:00:00+00:00",
+            "has_timezone": true
+          },
+          "validation_config": {
+            "enabled": true
+          },
+          "statistics": {
+            "close_mean": 46135.0,
+            "close_std": 544.1507144165116,
+            "close_min": 45200.0,
+            "close_max": 47070.0,
+            "volume_mean": 1093500.0,
+            "volume_sum": 205578000.0
+          }
+        },
+        "saved": true,
+        "provenance_file": "_work/dqf/provenance/unknown_2026-02-13T03-56-48.201156.json"
+      },
+      "issues": []
+    }
+  ]
+}

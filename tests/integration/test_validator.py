@@ -17,9 +17,7 @@ class TestDQFValidatorIntegration:
         """Test validator with clean data - all checks PASS."""
         validator = DQFValidator()
 
-        report = validator.validate(
-            data=clean_ohlcv_data, symbol="BTC-USD", source="test_fixture"
-        )
+        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test_fixture")
 
         assert isinstance(report, DQFReport)
         #  FIX: is_clean() removed, use overall_status
@@ -87,13 +85,13 @@ class TestDQFValidatorIntegration:
 
         validator = DQFValidator(config)
 
-        report = validator.validate(
-            data=clean_ohlcv_data, symbol="BTC-USD", source="test"
-        )
+        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
 
         #  FIX: Current implementation runs all 7 checks
         # When enabled filtering is implemented, change to: assert enabled_count == 3
-        enabled_count = len([r for r in report.check_results.values()])
+        # enabled_count = len(report.check_results)
+        # enabled_count = len(list(report.check_results.values()))
+        enabled_count = len(report.check_results)
 
         # v1.0.0: All checks run (enabled filtering not yet implemented)
         assert enabled_count == 7
@@ -105,9 +103,7 @@ class TestDQFValidatorIntegration:
     def test_validator_get_cleaned_data(self, clean_ohlcv_data):
         """Test retrieving cleaned data after validation."""
         validator = DQFValidator()
-        report = validator.validate(
-            data=clean_ohlcv_data, symbol="BTC-USD", source="test"
-        )
+        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
 
         #  FIX: v1.0.0 does not implement get_cleaned_data()
         # Data cleaning is planned for v1.2.0
@@ -138,9 +134,7 @@ class TestDQFValidatorIntegration:
     def test_report_summary_generation(self, clean_ohlcv_data):
         """Test report summary is generated correctly."""
         validator = DQFValidator()
-        report = validator.validate(
-            data=clean_ohlcv_data, symbol="BTC-USD", source="yahoo_finance"
-        )
+        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="yahoo_finance")
 
         #  FIX: summary() might not return string, might print
         # Check if method exists and behavior
@@ -156,9 +150,7 @@ class TestDQFValidatorIntegration:
     def test_report_export_yaml(self, clean_ohlcv_data, tmp_path):
         """Test exporting report to YAML."""
         validator = DQFValidator()
-        report = validator.validate(
-            data=clean_ohlcv_data, symbol="BTC-USD", source="test"
-        )
+        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
 
         yaml_file = tmp_path / "report.yaml"
         report.to_yaml(str(yaml_file))
@@ -168,7 +160,7 @@ class TestDQFValidatorIntegration:
         # Verify YAML is valid
         import yaml
 
-        with open(yaml_file, "r") as f:
+        with open(yaml_file) as f:
             data = yaml.safe_load(f)
 
         #  FIX: Actual structure has hierarchical metadata
@@ -183,16 +175,12 @@ class TestDQFValidatorIntegration:
         assert has_symbol or has_metadata, "YAML must contain symbol or metadata"
 
         # Verify essential structure
-        assert (
-            "summary" in data or "results" in data
-        ), "YAML must contain summary or results"
+        assert "summary" in data or "results" in data, "YAML must contain summary or results"
 
     def test_report_export_json(self, clean_ohlcv_data, tmp_path):
         """Test exporting report to JSON."""
         validator = DQFValidator()
-        report = validator.validate(
-            data=clean_ohlcv_data, symbol="BTC-USD", source="test"
-        )
+        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
 
         json_file = tmp_path / "report.json"
         report.to_json(str(json_file))
@@ -202,7 +190,7 @@ class TestDQFValidatorIntegration:
         # Verify JSON is valid
         import json
 
-        with open(json_file, "r") as f:
+        with open(json_file) as f:
             data = json.load(f)
 
         #  FIX: Same hierarchical structure as YAML
@@ -216,6 +204,4 @@ class TestDQFValidatorIntegration:
         assert has_symbol or has_metadata, "JSON must contain symbol or metadata"
 
         # Verify essential structure
-        assert (
-            "summary" in data or "results" in data
-        ), "JSON must contain summary or results"
+        assert "summary" in data or "results" in data, "JSON must contain summary or results"

@@ -44,10 +44,7 @@ class TestSanityTestsCheck:
         assert result.status == STATUS_WARNING
         #  FIX: Implementation might not populate anomalies in expected format
         # Just verify WARNING status (core behavior)
-        assert (
-            result.details.get("anomalies_count", 0) > 0
-            or result.status == STATUS_WARNING
-        )
+        assert result.details.get("anomalies_count", 0) > 0 or result.status == STATUS_WARNING
 
     def test_warn_zero_volume_period(self):
         """Test WARN when prolonged zero volume detected."""

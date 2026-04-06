@@ -67,7 +67,7 @@ class TestComprehensiveLoggingCheck:
         prov_file = Path(result.details["provenance_file"])
         assert prov_file.exists()
 
-        with open(prov_file, "r") as f:
+        with open(prov_file) as f:
             prov_data = json.load(f)
 
         assert prov_data["symbol"] == "TEST"
@@ -75,9 +75,7 @@ class TestComprehensiveLoggingCheck:
     def test_skip_save_without_symbol(self, clean_ohlcv_data):
         """Test provenance saved with default symbol if not provided."""
         check = ComprehensiveLoggingCheck()
-        result = check.run(
-            data=clean_ohlcv_data, save_provenance=True  # Requested but no symbol
-        )
+        result = check.run(data=clean_ohlcv_data, save_provenance=True)  # Requested but no symbol
 
         #  FIX: Implementation might save with default symbol or skip
         # Check actual behavior: saved should be True or False
@@ -89,9 +87,7 @@ class TestComprehensiveLoggingCheck:
         metadata = {"api_version": "v8", "auto_adjust": True}
 
         check = ComprehensiveLoggingCheck()
-        result = check.run(
-            data=clean_ohlcv_data, metadata=metadata, save_provenance=False
-        )
+        result = check.run(data=clean_ohlcv_data, metadata=metadata, save_provenance=False)
 
         prov = result.details["provenance"]
         assert prov.get("metadata") == metadata
