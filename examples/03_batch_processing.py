@@ -13,6 +13,7 @@ Usage:
     python examples/03_batch_processing.py
 """
 
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -312,7 +313,7 @@ def main():
     # Run examples
     example_basic_batch()
 
-    input("Press Enter to run strict config example...")
+    if sys.stdin.isatty(): input("Press Enter to run strict config example...")
     print()
 
     example_custom_config_batch()
