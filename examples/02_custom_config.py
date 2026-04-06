@@ -103,7 +103,8 @@ def example_1_yaml_config():
         status_icon = "✅" if result.status == "PASS" else "❌"
         print(f"   {status_icon} {check_name}: {result.message}")
 
-    if sys.stdin.isatty(): input("\nPress Enter to continue to Example 2...")
+    if sys.stdin.isatty():
+        input("\nPress Enter to continue to Example 2...")
 
 
 def example_2_programmatic_config():
@@ -143,7 +144,8 @@ def example_2_programmatic_config():
     print(f"   Overall Status: {report.overall_status}")
     print(f"   Checks Passed: {report.checks_passed}/{report.total_checks}")
 
-    if sys.stdin.isatty(): input("\nPress Enter to continue to Example 3...")
+    if sys.stdin.isatty():
+        input("\nPress Enter to continue to Example 3...")
 
 
 def example_3_selective_checks():
@@ -182,7 +184,8 @@ def example_3_selective_checks():
     print("      - Debugging specific checks")
     print("      - Production pipelines (skip unnecessary checks)")
 
-    if sys.stdin.isatty(): input("\nPress Enter to continue to Example 4...")
+    if sys.stdin.isatty():
+        input("\nPress Enter to continue to Example 4...")
 
 
 def example_4_modify_existing_config():
@@ -223,7 +226,8 @@ def example_4_modify_existing_config():
     config.to_yaml(str(new_config_path))
     print(f"\n💾 Modified config saved to: {new_config_path}")
 
-    if sys.stdin.isatty(): input("\nPress Enter to continue to Example 5...")
+    if sys.stdin.isatty():
+        input("\nPress Enter to continue to Example 5...")
 
 
 def example_5_config_inheritance():

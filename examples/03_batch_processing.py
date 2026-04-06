@@ -313,7 +313,8 @@ def main():
     # Run examples
     example_basic_batch()
 
-    if sys.stdin.isatty(): input("Press Enter to run strict config example...")
+    if sys.stdin.isatty():
+        input("Press Enter to run strict config example...")
     print()
 
     example_custom_config_batch()
