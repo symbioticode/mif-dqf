@@ -18,6 +18,7 @@ from dqf.checks.check_5_trace import IndexTraceabilityCheck
 from dqf.checks.check_6_sanity import SanityTestsCheck
 from dqf.checks.check_7_logging import ComprehensiveLoggingCheck
 from dqf.core.config import DQFConfig
+from dqf.core.enums import DQFMode
 from dqf.core.report import DQFReport
 
 
@@ -55,8 +56,11 @@ class DQFValidator:
         self.logger = logging.getLogger(__name__)
 
         # Initialize config
+        # v1.1 bridge: DQFConfig now requires an explicit mode.
+        # The v1.0 validator uses DIAGNOSTIC as a transitional default;
+        # this branch will be removed when DQFValidator is rewritten in Session 4.
         if config is None:
-            config = DQFConfig()
+            config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
         self.config = config
 
         # Initialize all available checks (map by string ID for v1.0.0 compatibility)
