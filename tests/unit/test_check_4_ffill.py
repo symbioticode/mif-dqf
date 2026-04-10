@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from dqf.checks.check_4_ffill import ForwardFillCheck
-from dqf.core.enums import STATUS_FAIL, STATUS_PASS, STATUS_WARNING
+from dqf.core.enums import STATUS_FAIL, STATUS_PASS, STATUS_WARN
 
 
 class TestForwardFillCheck:
@@ -77,7 +77,7 @@ class TestForwardFillCheck:
         result = check.run(data=df, warn_threshold=2, max_consecutive_ffill=3)
 
         #  FIX: Status might be WARNING or FAIL depending on threshold
-        assert result.status in [STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_WARN, STATUS_FAIL]
         #  FIX: Check max_consecutive_overall
         max_seq = result.details.get("max_consecutive_overall", 0)
         assert max_seq >= 4  # 5 consecutive values = 4 ffills
@@ -101,7 +101,7 @@ class TestForwardFillCheck:
 
         # With low threshold, should WARN
         result = check.run(data=df, warn_threshold=2)
-        assert result.status in [STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_WARN, STATUS_FAIL]
 
     def test_multiple_columns(self):
         """Test checking multiple columns."""
@@ -119,7 +119,7 @@ class TestForwardFillCheck:
         result = check.run(data=df, columns_to_check=["open", "close"], warn_threshold=2)
 
         #  FIX: Should detect sequence in close
-        assert result.status in [STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_WARN, STATUS_FAIL]
         # Check ffill_sequences structure
         assert "ffill_sequences" in result.details
 
@@ -172,7 +172,7 @@ class TestForwardFillCheck:
         result = check.run(data=df, warn_threshold=3, max_consecutive_ffill=5)
 
         # 6 consecutive 102.0 values should trigger warning
-        assert result.status in [STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_WARN, STATUS_FAIL]
         #  FIX: Check actual consecutive count (6 values = 5 ffills)
         max_seq = result.details.get("max_consecutive_overall", 0)
         assert max_seq >= 5
@@ -196,7 +196,7 @@ class TestForwardFillCheck:
         # - warn_threshold=2 means: warn if > 2 consecutive
         # - Sequences of EXACTLY 2 are AT threshold  Implementation returns PASS
         # - This is correct behavior (threshold is exclusive upper bound in this impl)
-        assert result.status in [STATUS_PASS, STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_PASS, STATUS_WARN, STATUS_FAIL]
 
         # Verify sequence detection worked
         assert "ffill_sequences" in result.details
@@ -230,7 +230,7 @@ class TestForwardFillCheck:
         result = check.run(data=df, columns_to_check=["close"], warn_threshold=2)  # Lowercase
 
         #  FIX: Should handle case-insensitive columns
-        assert result.status in [STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_WARN, STATUS_FAIL]
 
     def test_severity_levels(self):
         """Test severity classification (WARNING vs CRITICAL)."""
@@ -244,6 +244,6 @@ class TestForwardFillCheck:
         result = check.run(data=df, warn_threshold=2, max_consecutive_ffill=5)
 
         #  FIX: Should return WARNING or FAIL
-        assert result.status in [STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_WARN, STATUS_FAIL]
         # Check if severity is reported
         # Severity might be in result.severity or details

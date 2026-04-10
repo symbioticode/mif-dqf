@@ -5,7 +5,7 @@ Unit tests for Check 6: Sanity Tests
 import pandas as pd
 
 from dqf.checks.check_6_sanity import SanityTestsCheck
-from dqf.core.enums import STATUS_PASS, STATUS_WARNING
+from dqf.core.enums import STATUS_PASS, STATUS_WARN
 
 
 class TestSanityTestsCheck:
@@ -41,10 +41,10 @@ class TestSanityTestsCheck:
         check = SanityTestsCheck()
         result = check.run(data=df, extreme_return_threshold=1.0)
 
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         #  FIX: Implementation might not populate anomalies in expected format
         # Just verify WARNING status (core behavior)
-        assert result.details.get("anomalies_count", 0) > 0 or result.status == STATUS_WARNING
+        assert result.details.get("anomalies_count", 0) > 0 or result.status == STATUS_WARN
 
     def test_warn_zero_volume_period(self):
         """Test WARN when prolonged zero volume detected."""
@@ -57,9 +57,9 @@ class TestSanityTestsCheck:
         check = SanityTestsCheck()
         result = check.run(data=df, zero_volume_days=5)
 
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         #  FIX: Just verify WARNING triggered
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
 
     def test_warn_invalid_price(self):
         """Test WARN when price below minimum."""
@@ -75,9 +75,9 @@ class TestSanityTestsCheck:
         check = SanityTestsCheck()
         result = check.run(data=df, min_price=1e-8)
 
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         #  FIX: Just verify WARNING status
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
 
     def test_pass_short_zero_volume(self):
         """Test PASS when zero volume within threshold."""
@@ -116,4 +116,4 @@ class TestSanityTestsCheck:
 
         # With low threshold, should WARN
         result = check.run(data=df, extreme_return_threshold=0.5)
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
