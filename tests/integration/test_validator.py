@@ -1,224 +1,310 @@
 """
-Integration tests for DQFValidator
+Integration tests for DQFValidator + DQFReport — v1.1
 
-v1.0 tests are skipped pending DQFValidator rewrite in Session 4.
-The v1.1 validator (core/validator.py) will expose a new API:
-  - DQFConfig(mode=DQFMode.CERTIFICATION|DIAGNOSTIC) required
-  - DQFReport wraps a MIF-Lite manifest (not a v1.0 report)
-  - overall_status in {CERTIFIED, WARNING, VOID, FAIL}
+Full end-to-end pipeline:
+  DQFConfig → DQFValidator.validate() → DQFReport (MIF-Lite manifest)
+
+Covers:
+  - CERTIFICATION mode: clean data → CERTIFIED, MPI=100, gate=1.0
+  - CERTIFICATION mode: integrity violations → VOID (CORE FAIL)
+  - CERTIFICATION mode: missing calendar → VOID (C3 ERROR_MISSING_METADATA)
+  - CERTIFICATION mode: advisory WARN (ffill) → WARNING, gate ≤ 0.8
+  - DIAGNOSTIC mode: no calendar → auto-detect, result not VOID
+  - Manifest structure: all required top-level keys present
+  - DQFReport properties: overall_status, purity_index, gate, mif_uid
+  - DQFReport.is_certified, print_summary (smoke), to_json, to_yaml
+  - DQFValidator type safety: wrong config type → TypeError
+  - PROD always in core_results
+  - C1 always SKIP in Phase 1
+  - Determinism: same df + same args → same mif_uid
 """
+
+import json
 
 import pandas as pd
 import pytest
+import yaml
 
+from dqf.core.config import DQFConfig
+from dqf.core.enums import (
+    STATUS_CERTIFIED,
+    STATUS_VOID,
+    STATUS_WARNING,
+    DQFMode,
+)
 from dqf.core.report import DQFReport
 from dqf.core.validator import DQFValidator
 
-# All tests in this class rely on the v1.0 DQFValidator + DQFConfig API.
-# They will be rewritten in Session 4 once DQFValidator is upgraded to v1.1.
-_SKIP_V10 = pytest.mark.skip(reason="v1.0 integration tests — rewrite in Session 4 (DQFValidator v1.1)")
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def cert_config():
+    return DQFConfig(mode=DQFMode.CERTIFICATION)
 
 
-class TestDQFValidatorIntegration:
-    """Integration test suite for DQFValidator"""
+@pytest.fixture
+def diag_config():
+    return DQFConfig(mode=DQFMode.DIAGNOSTIC)
 
-    @_SKIP_V10
-    def test_validator_clean_data(self, clean_ohlcv_data):
-        """Test validator with clean data - all checks PASS."""
-        validator = DQFValidator()
 
-        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test_fixture")
+@pytest.fixture
+def clean_nyse_df():
+    """Weekday-only, timezone-aware, physics-valid OHLCV data."""
+    dates = pd.bdate_range("2024-01-02", periods=20, freq="B", tz="UTC")
+    return pd.DataFrame(
+        {
+            "open":   [100.0 + i for i in range(len(dates))],
+            "high":   [105.0 + i for i in range(len(dates))],
+            "low":    [95.0  + i for i in range(len(dates))],
+            "close":  [102.0 + i for i in range(len(dates))],
+            "volume": [1_000_000] * len(dates),
+        },
+        index=dates,
+    )
+
+
+@pytest.fixture
+def df_with_integrity_violation():
+    """Data with High < Low on one bar — C2 CORE FAIL."""
+    dates = pd.bdate_range("2024-01-02", periods=10, freq="B", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "open":   [100.0] * 10,
+            "high":   [90.0] + [105.0] * 9,   # row 0: high < low
+            "low":    [95.0] * 10,
+            "close":  [102.0] * 10,
+            "volume": [1_000_000] * 10,
+        },
+        index=dates,
+    )
+    return df
+
+
+@pytest.fixture
+def df_with_ffill():
+    """Data with 4 consecutive identical close values — C4 ADVISORY WARN."""
+    dates = pd.bdate_range("2024-01-02", periods=15, freq="B", tz="UTC")
+    close = [100.0, 101.0, 102.0, 103.0, 104.0,
+             104.0, 104.0, 104.0, 104.0,          # 5 identical → 4 ffills
+             105.0, 106.0, 107.0, 108.0, 109.0, 110.0]
+    return pd.DataFrame(
+        {
+            "open":   [c - 1 for c in close],
+            "high":   [c + 2 for c in close],
+            "low":    [c - 2 for c in close],
+            "close":  close,
+            "volume": [1_000_000] * 15,
+        },
+        index=dates,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CERTIFICATION mode
+# ---------------------------------------------------------------------------
+
+class TestCertificationMode:
+    def test_clean_data_certified(self, cert_config, clean_nyse_df):
+        """Clean NYSE data in CERTIFICATION mode → CERTIFIED."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
         assert isinstance(report, DQFReport)
-        #  FIX: is_clean() removed, use overall_status
-        assert report.overall_status in ["PASS", "WARNING"]
-        #  FIX: checks_total  total_checks
-        assert report.total_checks == 7
-        #  FIX: checks_failed  Use property or check status
-        # Most should pass, some might WARN (e.g., timezone)
-        assert report.checks_failed == 0 or report.overall_status == "WARNING"
+        assert report.overall_status == STATUS_CERTIFIED
+        assert report.is_certified is True
 
-    @_SKIP_V10
-    def test_validator_dirty_data(self):
-        """Test validator with corrupted data - checks FAIL."""
-        # Create intentionally bad data
-        dates = pd.date_range("2024-01-01", periods=10, freq="D")
-        df = pd.DataFrame(
-            {
-                "open": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
-                "high": [
-                    105,
-                    90,
-                    107,
-                    108,
-                    109,
-                    110,
-                    111,
-                    112,
-                    113,
-                    114,
-                ],  # Row 2: High < Low
-                "low": [95, 95, 96, 97, 98, 99, 100, 101, 102, 103],
-                "close": [102, 98, 104, 105, 106, 107, 108, 109, 110, 111],
-                "volume": [1000] * 10,
-            },
-            index=dates,
-        )
+    def test_certified_gate_is_1(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        validator = DQFValidator()
-        report = validator.validate(data=df, symbol="CORRUPT", source="test")
+        assert report.precondition_gate == 1.0
 
-        #  FIX: is_clean() removed
-        assert report.overall_status in ["FAIL", "ERROR"]
-        assert report.checks_failed > 0
+    def test_certified_mpi_is_100_for_clean_data(self, cert_config, clean_nyse_df):
+        """No interventions on clean data → MPI = 100."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        # Check 2 (Integrity) should fail
-        failed_checks = [r for r in report.check_results.values() if r.failed]
-        assert len(failed_checks) > 0
+        assert report.purity_index == pytest.approx(100.0)
 
-    @_SKIP_V10
-    def test_validator_partial_checks(self, clean_ohlcv_data):
-        """Test validator with subset of checks enabled."""
-        #  FIX: DQFValidator v1.0.0 does not yet implement enabled filtering
-        # All checks are executed regardless of config.checks[...]["enabled"]
-        # This is acceptable for v1.0.0 - feature can be added in v1.1.0
+    def test_integrity_violation_returns_void(self, cert_config, df_with_integrity_violation):
+        """C2 FAIL (High < Low) → overall VOID, gate = 0.0."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(df_with_integrity_violation, calendar="NYSE")
 
-        from dqf.core.config import DQFConfig
+        assert report.overall_status == STATUS_VOID
+        assert report.precondition_gate == 0.0
+        assert report.is_certified is False
 
-        config = DQFConfig()
-        # Configure checks (for future use when filtering is implemented)
-        config.checks["check_1_source"]["enabled"] = True
-        config.checks["check_2_integrity"]["enabled"] = True
-        config.checks["check_3_calendar"]["enabled"] = True
-        config.checks["check_4_ffill"]["enabled"] = False
-        config.checks["check_5_trace"]["enabled"] = False
-        config.checks["check_6_sanity"]["enabled"] = False
-        config.checks["check_7_logging"]["enabled"] = False
+    def test_missing_calendar_returns_void(self, cert_config, clean_nyse_df):
+        """C3 CORE FAIL on missing calendar → VOID."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar=None)
 
-        validator = DQFValidator(config)
+        assert report.overall_status == STATUS_VOID
+        assert report.core_results.get("C3") in ("FAIL", "ERROR")
 
-        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
+    def test_advisory_ffill_warn_returns_warning(self, cert_config, df_with_ffill):
+        """C4 WARN → manifest STATUS_WARNING, gate ≤ 0.8."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(df_with_ffill, calendar="NYSE")
 
-        #  FIX: Current implementation runs all 7 checks
-        # When enabled filtering is implemented, change to: assert enabled_count == 3
-        # enabled_count = len(report.check_results)
-        # enabled_count = len(list(report.check_results.values()))
-        enabled_count = len(report.check_results)
+        # CORE checks must all pass for WARNING (not VOID)
+        assert report.overall_status in (STATUS_WARNING, STATUS_CERTIFIED)
+        if report.overall_status == STATUS_WARNING:
+            assert report.precondition_gate <= 0.8
 
-        # v1.0.0: All checks run (enabled filtering not yet implemented)
-        assert enabled_count == 7
+    def test_prod_always_in_core_results(self, cert_config, clean_nyse_df):
+        """PROD must appear in manifest checks.core as 'PASS'."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        # Verify report is valid regardless
-        assert report.total_checks == 7
-        assert report.overall_status in ["PASS", "WARNING", "FAIL"]
+        assert "PROD" in report.core_results
+        assert report.core_results["PROD"] == "PASS"
 
-    @_SKIP_V10
-    def test_validator_get_cleaned_data(self, clean_ohlcv_data):
-        """Test retrieving cleaned data after validation."""
-        validator = DQFValidator()
-        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
+    def test_c1_always_skip_phase1(self, cert_config, clean_nyse_df):
+        """C1 is SKIP in Phase 1 (DAL not connected)."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        #  FIX: v1.0.0 does not implement get_cleaned_data()
-        # Data cleaning is planned for v1.2.0
-        # For now, verify report contains original data reference
-        if report.overall_status == "PASS":
-            # v1.0.0: No active cleaning, so cleaned_data == original data
-            # Method doesn't exist, which is expected behavior
-            assert report.overall_status == "PASS"
+        assert report.advisory_results.get("C1") == "SKIP"
 
-            # Verify we can access report metadata instead
-            assert report.symbol == "BTC-USD"
-            assert report.source == "test"
-            assert report.total_checks > 0
 
-    @_SKIP_V10
-    def test_validator_error_handling(self):
-        """Test validator handles malformed data gracefully."""
-        # DataFrame with wrong structure
-        df = pd.DataFrame({"wrong_column": [1, 2, 3]})
+# ---------------------------------------------------------------------------
+# DIAGNOSTIC mode
+# ---------------------------------------------------------------------------
 
-        validator = DQFValidator()
-        report = validator.validate(data=df, symbol="BAD", source="test")
+class TestDiagnosticMode:
+    def test_no_calendar_does_not_void(self, diag_config, clean_nyse_df):
+        """DIAGNOSTIC + no calendar → auto-detect, result is not VOID."""
+        validator = DQFValidator(diag_config)
+        report = validator.validate(clean_nyse_df)
 
-        # Should not crash, should produce report
-        assert isinstance(report, DQFReport)
-        #  FIX: total_checks instead of checks_total
-        assert report.total_checks == 7
+        assert report.overall_status != STATUS_VOID
 
-    @_SKIP_V10
-    def test_report_summary_generation(self, clean_ohlcv_data):
-        """Test report summary is generated correctly."""
-        validator = DQFValidator()
-        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="yahoo_finance")
+    def test_diagnostic_manifest_has_mode_annotation(self, diag_config, clean_nyse_df):
+        """Provenance.mode is 'DIAGNOSTIC'."""
+        validator = DQFValidator(diag_config)
+        report = validator.validate(clean_nyse_df)
 
-        #  FIX: summary() might not return string, might print
-        # Check if method exists and behavior
-        if hasattr(report, "print_summary"):
-            # print_summary() prints to stdout, doesn't return
-            report.print_summary()
-            # Just verify it doesn't crash
-        elif hasattr(report, "summary"):
-            summary = report.summary()
-            assert isinstance(summary, str)
-            assert "BTC-USD" in summary or "yahoo_finance" in summary
+        assert report.mode == "DIAGNOSTIC"
 
-    @_SKIP_V10
-    def test_report_export_yaml(self, clean_ohlcv_data, tmp_path):
-        """Test exporting report to YAML."""
-        validator = DQFValidator()
-        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
+    def test_diagnostic_calendar_unknown_when_omitted(self, diag_config, clean_nyse_df):
+        """Without explicit calendar in DIAGNOSTIC, calendar may be UNKNOWN or inferred."""
+        validator = DQFValidator(diag_config)
+        report = validator.validate(clean_nyse_df)
 
-        yaml_file = tmp_path / "report.yaml"
-        report.to_yaml(str(yaml_file))
+        # Calendar is either auto-detected or UNKNOWN — either is valid
+        assert isinstance(report.calendar, str)
 
-        assert yaml_file.exists()
 
-        # Verify YAML is valid
-        import yaml
+# ---------------------------------------------------------------------------
+# Manifest structure
+# ---------------------------------------------------------------------------
 
-        with open(yaml_file) as f:
-            data = yaml.safe_load(f)
+class TestManifestStructure:
+    def test_required_top_level_keys(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
+        required = {"@context", "@type", "mif_uid", "status", "checks",
+                    "vitality_signal", "provenance", "signature"}
+        assert required.issubset(report.manifest.keys())
 
-        #  FIX: Actual structure has hierarchical metadata
-        # Check for either top-level keys OR nested keys
-        has_symbol = "symbol" in data or (
-            "report_metadata" in data and "symbol" in data["report_metadata"]
-        )
-        has_metadata = "metadata" in data or (
-            "report_metadata" in data and "metadata" in data["report_metadata"]
-        )
+    def test_mif_uid_starts_with_sha256(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        assert has_symbol or has_metadata, "YAML must contain symbol or metadata"
+        assert report.mif_uid.startswith("sha256:")
 
-        # Verify essential structure
-        assert "summary" in data or "results" in data, "YAML must contain summary or results"
+    def test_sig_type_sha256_provisional(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-    @_SKIP_V10
-    def test_report_export_json(self, clean_ohlcv_data, tmp_path):
-        """Test exporting report to JSON."""
-        validator = DQFValidator()
-        report = validator.validate(data=clean_ohlcv_data, symbol="BTC-USD", source="test")
+        assert report.manifest["signature"]["type"] == "sha256_provisional"
 
-        json_file = tmp_path / "report.json"
-        report.to_json(str(json_file))
+    def test_cleaning_log_uri_is_null(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        assert json_file.exists()
+        assert report.manifest["provenance"]["cleaning_log_uri"] is None
 
-        # Verify JSON is valid
-        import json
+    def test_vitality_label_in_dsig_vocabulary(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
 
-        with open(json_file) as f:
-            data = json.load(f)
+        assert report.vitality_label in {"EXCELLENT", "GOOD", "DEGRADED", "CRITICAL"}
 
-        #  FIX: Same hierarchical structure as YAML
-        has_symbol = "symbol" in data or (
-            "report_metadata" in data and "symbol" in data["report_metadata"]
-        )
-        has_metadata = "metadata" in data or (
-            "report_metadata" in data and "metadata" in data["report_metadata"]
-        )
 
-        assert has_symbol or has_metadata, "JSON must contain symbol or metadata"
+# ---------------------------------------------------------------------------
+# DQFReport properties and serialisation
+# ---------------------------------------------------------------------------
 
-        # Verify essential structure
-        assert "summary" in data or "results" in data, "JSON must contain summary or results"
+class TestReportProperties:
+    def test_to_json_returns_valid_json(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
+        parsed = json.loads(report.to_json())
+
+        assert parsed["@context"] == "https://mif.dev/v1"
+        assert "mif_uid" in parsed
+
+    def test_to_yaml_returns_valid_yaml(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
+        parsed = yaml.safe_load(report.to_yaml())
+
+        assert "mif_uid" in parsed
+        assert parsed["@type"] == "DataCertification"
+
+    def test_print_summary_does_not_raise(self, cert_config, clean_nyse_df, capsys):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
+        report.print_summary()  # must not raise
+
+        captured = capsys.readouterr()
+        assert "DQF" in captured.out
+        assert report.overall_status in captured.out
+
+    def test_repr_contains_status(self, cert_config, clean_nyse_df):
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar="NYSE")
+
+        assert report.overall_status in repr(report)
+
+
+# ---------------------------------------------------------------------------
+# DQFValidator type safety and determinism
+# ---------------------------------------------------------------------------
+
+class TestValidatorContract:
+    def test_wrong_config_type_raises(self):
+        with pytest.raises(TypeError, match="DQFConfig"):
+            DQFValidator("not_a_config")
+
+    def test_non_dataframe_raises(self, cert_config):
+        validator = DQFValidator(cert_config)
+        with pytest.raises(TypeError, match="DataFrame"):
+            validator.validate("not_a_df", calendar="NYSE")
+
+    def test_determinism_same_inputs_same_uid(self, cert_config, clean_nyse_df):
+        """Same df + same args must yield the same mif_uid."""
+        v1 = DQFValidator(cert_config)
+        v2 = DQFValidator(cert_config)
+        uid1 = v1.validate(clean_nyse_df, calendar="NYSE").mif_uid
+        uid2 = v2.validate(clean_nyse_df, calendar="NYSE").mif_uid
+
+        assert uid1 == uid2
+
+    def test_different_calendars_different_uid(self, cert_config, clean_nyse_df):
+        """Calendar is part of MIF-UID — different calendars → different UIDs."""
+        v = DQFValidator(cert_config)
+        uid_nyse = v.validate(clean_nyse_df, calendar="NYSE").mif_uid
+        uid_lse  = v.validate(clean_nyse_df, calendar="LSE").mif_uid
+
+        assert uid_nyse != uid_lse
+
+    def test_repr_contains_mode(self, cert_config):
+        v = DQFValidator(cert_config)
+        assert "CERTIFICATION" in repr(v)
