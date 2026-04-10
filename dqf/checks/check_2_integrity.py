@@ -17,6 +17,7 @@ from dqf.core.enums import (
     STATUS_FAIL,
     STATUS_PASS,
 )
+from dqf.utils.mpi import InterventionLog
 
 
 class IntegrityCheck(BaseCheck):
@@ -160,20 +161,23 @@ class IntegrityCheck(BaseCheck):
             details["total_violations"] = total_violations
             details["violation_rate"] = violation_rate
 
+            # Emit interventions for MPI — physical violations detected
+            # (In Phase 1, DQF detects; Phase 2 will actively correct.
+            #  The count reflects what would need to be fixed.)
+            log = InterventionLog(physical_corrections=total_violations)
+
             # Determine status
             if violation_rate > max_violation_rate:
-                return self._create_result(
+                result = self._create_result(
                     status=STATUS_FAIL,
                     severity=SEVERITY_ERROR,
                     message=f"Integrity violations: {violation_rate:.2%} (max: {max_violation_rate:.2%})",
                     details=details,
                 )
+                result.interventions = log
+                return result
 
-            #  FIX: Return PASS if violations below threshold
-            # WARNING would be for edge cases, but tests expect PASS when rate < threshold
-            # Even with violations present, if rate is acceptable  PASS
-            # All clear
-            return self._create_result(
+            result = self._create_result(
                 status=STATUS_PASS,
                 severity=SEVERITY_INFO,
                 message=(
@@ -183,6 +187,8 @@ class IntegrityCheck(BaseCheck):
                 ),
                 details=details,
             )
+            result.interventions = log
+            return result
 
         except Exception as e:
             return self._create_result(

@@ -6,7 +6,7 @@ Defines abstract base class and result types for all validation checks.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -18,8 +18,10 @@ from dqf.core.enums import (
     STATUS_ERROR,
     STATUS_FAIL,
     STATUS_PASS,
-    STATUS_WARNING,
+    STATUS_SKIP,
+    STATUS_WARN,
 )
+from dqf.utils.mpi import InterventionLog
 
 
 @dataclass
@@ -47,11 +49,14 @@ class CheckResult:
 
     Attributes:
         check_name: Name of the check that produced this result
-        status: Overall status ('PASS', 'FAIL', 'WARNING', 'ERROR')
+        status: Per-check status — 'PASS', 'FAIL', 'WARN', 'SKIP', 'ERROR'
         message: Summary message
         issues: List of specific issues found
         details: Additional metadata
         severity: Overall severity level
+        interventions: Interventions performed by this check (v1.1).
+            Populated by checks that modify or detect data requiring
+            correction. Aggregated by DQFValidator to compute the MPI.
     """
 
     check_name: str = "UnknownCheck"
@@ -60,10 +65,14 @@ class CheckResult:
     issues: list[CheckIssue] = field(default_factory=list)
     details: dict[str, Any] | None = None
     severity: str = "INFO"
+    interventions: Optional[InterventionLog] = None
 
     def __post_init__(self):
         """Validate result after initialization."""
-        valid_statuses = {STATUS_PASS, STATUS_WARNING, STATUS_FAIL, STATUS_ERROR}
+        # v1.1 vocabulary: WARN replaces WARNING at the per-check level.
+        # STATUS_WARNING ("WARNING") is the overall manifest status; it is
+        # not a valid per-check result status.
+        valid_statuses = {STATUS_PASS, STATUS_WARN, STATUS_SKIP, STATUS_FAIL, STATUS_ERROR}
         if self.status not in valid_statuses:
             raise ValueError(f"Invalid status '{self.status}'. Must be one of {valid_statuses}")
 
@@ -291,10 +300,10 @@ class BaseCheck(ABC):
             **kwargs: Additional arguments passed to _create_result
 
         Returns:
-            CheckResult with WARNING status
+            CheckResult with WARN status (v1.1 per-check vocabulary)
         """
         return self._create_result(
-            status=STATUS_WARNING,
+            status=STATUS_WARN,
             message=message,
             severity=SEVERITY_WARNING,
             **kwargs,

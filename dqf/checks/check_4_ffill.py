@@ -17,8 +17,9 @@ from dqf.core.enums import (
     STATUS_ERROR,
     STATUS_FAIL,
     STATUS_PASS,
-    STATUS_WARNING,
+    STATUS_WARN,
 )
+from dqf.utils.mpi import InterventionLog
 
 
 class ForwardFillCheck(BaseCheck):
@@ -138,30 +139,40 @@ class ForwardFillCheck(BaseCheck):
             details["max_consecutive_overall"] = max_consecutive_found
             details["total_ffill_rows"] = total_ffill_rows
 
+            # Interventions: total ffill values that would need to be recovered
+            # (emitted regardless of threshold — MPI counts all interventions)
+            log = InterventionLog(forward_fills=total_ffill_rows)
+
             # Determine status based on thresholds
             if max_consecutive_found > max_consecutive_ffill:
-                return self._create_result(
+                result = self._create_result(
                     status=STATUS_FAIL,
                     severity=SEVERITY_ERROR,
                     message=f"Excessive forward-fill detected: {max_consecutive_found} consecutive (max: {max_consecutive_ffill})",
                     details=details,
                 )
+                result.interventions = log
+                return result
 
             if max_consecutive_found > warn_threshold:
-                return self._create_result(
-                    status=STATUS_WARNING,
+                result = self._create_result(
+                    status=STATUS_WARN,
                     severity=SEVERITY_WARNING,
                     message=f"Forward-fill sequences detected: max {max_consecutive_found} consecutive (threshold: {warn_threshold})",
                     details=details,
                 )
+                result.interventions = log
+                return result
 
             # All clear
-            return self._create_result(
+            result = self._create_result(
                 status=STATUS_PASS,
                 severity=SEVERITY_INFO,
                 message="No excessive forward-fill detected",
                 details=details,
             )
+            result.interventions = log
+            return result
 
         except Exception as e:
             return self._create_result(

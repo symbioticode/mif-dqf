@@ -1,287 +1,172 @@
 """
-DQF Report Module.
+DQF Report Module — v1.1
 
-Generates comprehensive validation reports.
+DQFReport is a thin, read-only wrapper around the MIF-Lite manifest produced
+by PRODEnvelope. The manifest is the single source of truth; all properties
+are accessors on it.
+
+No mutable state is introduced after construction. Serialisation methods
+(to_json, to_yaml) reproduce the manifest verbatim.
 """
 
 import json
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+from dataclasses import dataclass
 
+import pandas as pd
 import yaml
 
-from dqf.checks.base import CheckResult
-from dqf.core.enums import STATUS_ERROR, STATUS_FAIL, STATUS_PASS, STATUS_WARNING
-
-timestamp = datetime.now(timezone.utc).isoformat()
+from dqf.core.enums import STATUS_CERTIFIED
 
 
+@dataclass
 class DQFReport:
     """
-    Comprehensive validation report.
+    Result of a DQF v1.1 validation run.
 
-    Aggregates results from all checks and provides summary statistics.
+    The ``manifest`` dict is the canonical .mif.json artefact produced by
+    PRODEnvelope. All public properties delegate to it so callers never need
+    to navigate the dict directly.
+
+    ``cleaned_data`` is the DataFrame that was validated. In Phase 1, DQF
+    does not actively clean data (it detects and reports); Phase 2 will
+    replace or supplement this field with the actively cleaned version.
+
+    Args:
+        manifest     : MIF-Lite dict from PRODEnvelope.build().
+        cleaned_data : The validated DataFrame (passthrough in Phase 1).
     """
 
-    def __init__(
-        self,
-        results: list[CheckResult],
-        symbol: str | None = None,
-        source: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ):
+    manifest: dict
+    cleaned_data: pd.DataFrame
+
+    # ------------------------------------------------------------------
+    # Status accessors
+    # ------------------------------------------------------------------
+
+    @property
+    def overall_status(self) -> str:
+        """One of: CERTIFIED, WARNING, VOID, FAIL."""
+        return self.manifest["status"]["overall"]
+
+    @property
+    def precondition_gate(self) -> float:
         """
-        Initialize validation report.
+        Gate value applied to downstream MIF scores (spec §7).
 
-        Args:
-            results: List of CheckResult objects from validation
-            symbol: Asset symbol
-            source: Data source identifier
-            metadata: Optional metadata dict
+        1.0 = CERTIFIED, 0.8 = WARNING (MPI-capped), 0.2 = FAIL, 0.0 = VOID.
         """
-        self.results = results
-        self.symbol = symbol
-        self.source = source
-        self.metadata = metadata or {}
-        self.timestamp = datetime.utcnow().isoformat()
+        return self.manifest["status"]["precondition_gate"]
 
-        # Calculate summary statistics
-        self._calculate_summary()
+    @property
+    def purity_index(self) -> float:
+        """MIF Purity Index in [0.0, 100.0]. 100.0 = zero intervention."""
+        return self.manifest["status"]["purity_index"]
 
-    def _calculate_summary(self) -> None:
-        """Calculate summary statistics from results."""
-        self.total_checks = len(self.results)
-        self.checks_passed = sum(1 for r in self.results if r.status == STATUS_PASS)
-        self.checks_failed = sum(1 for r in self.results if r.status == STATUS_FAIL)
-        self.checks_warning = sum(1 for r in self.results if r.status == STATUS_WARNING)
-        self.checks_error = sum(1 for r in self.results if r.status == STATUS_ERROR)
+    @property
+    def is_certified(self) -> bool:
+        """True only when overall_status == CERTIFIED."""
+        return self.overall_status == STATUS_CERTIFIED
 
-        # Determine overall status
-        if self.checks_error > 0 or self.checks_failed > 0:
-            self.overall_status = STATUS_FAIL
-        elif self.checks_warning > 0:
-            self.overall_status = STATUS_WARNING
-        else:
-            self.overall_status = STATUS_PASS
+    # ------------------------------------------------------------------
+    # Identity accessors
+    # ------------------------------------------------------------------
 
-    def to_dict(self) -> dict[str, Any]:
-        """
-        Export report to dictionary.
+    @property
+    def mif_uid(self) -> str:
+        """Unique certification identifier (sha256-prefixed hex digest)."""
+        return self.manifest["mif_uid"]
 
-        Returns:
-            Dictionary representation of report
-        """
-        return {
-            "report_metadata": {
-                "timestamp": self.timestamp,
-                "symbol": self.symbol,
-                "source": self.source,
-                "metadata": self.metadata,
-            },
-            "summary": {
-                "overall_status": self.overall_status,
-                "total_checks": self.total_checks,
-                "checks_passed": self.checks_passed,
-                "checks_failed": self.checks_failed,
-                "checks_warning": self.checks_warning,
-                "checks_error": self.checks_error,
-            },
-            "results": [
-                {
-                    "check_name": r.check_name,
-                    "status": r.status,
-                    "severity": r.severity,
-                    "message": r.message,
-                    "details": r.details,
-                    "issues": (
-                        [
-                            {
-                                "severity": issue.severity,
-                                "message": issue.message,
-                                "location": issue.location,
-                                "details": issue.details,
-                            }
-                            for issue in r.issues
-                        ]
-                        if r.issues
-                        else []
-                    ),
-                }
-                for r in self.results
-            ],
-        }
+    @property
+    def dqf_version(self) -> str:
+        return self.manifest["provenance"]["dqf_version"]
 
-    def to_yaml(self, filepath: str | None = None) -> str | None:
-        """
-        Export report to YAML format.
+    @property
+    def mode(self) -> str:
+        """Validation mode as string: 'CERTIFICATION' or 'DIAGNOSTIC'."""
+        return self.manifest["provenance"]["mode"]
 
-        Args:
-            filepath: Optional path to save YAML file. If None, returns string.
+    @property
+    def calendar(self) -> str:
+        return self.manifest["provenance"]["calendar"]
 
-        Returns:
-            YAML string if filepath is None, otherwise None
-        """
-        report_dict = self.to_dict()
-        yaml_str = yaml.dump(report_dict, default_flow_style=False, sort_keys=False)
+    # ------------------------------------------------------------------
+    # Check result accessors
+    # ------------------------------------------------------------------
 
-        if filepath:
-            Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-            with open(filepath, "w") as f:
-                f.write(yaml_str)
-            return None
+    @property
+    def core_results(self) -> dict:
+        """Dict[check_id → status_str] for CORE checks."""
+        return self.manifest["checks"]["core"]
 
-        return yaml_str
+    @property
+    def advisory_results(self) -> dict:
+        """Dict[check_id → status_str] for ADVISORY checks."""
+        return self.manifest["checks"]["advisory"]
 
-    def to_json(self, filepath: str | None = None, indent: int = 2) -> str | None:
-        """
-        Export report to JSON format.
+    # ------------------------------------------------------------------
+    # Vitality signal
+    # ------------------------------------------------------------------
 
-        Args:
-            filepath: Optional path to save JSON file. If None, returns string.
-            indent: Number of spaces for indentation
+    @property
+    def vitality_score(self) -> int:
+        return self.manifest["vitality_signal"]["score"]
 
-        Returns:
-            JSON string if filepath is None, otherwise None
-        """
-        report_dict = self.to_dict()
-        json_str = json.dumps(report_dict, indent=indent)
+    @property
+    def vitality_label(self) -> str:
+        """D-SIG v0.5 label: EXCELLENT, GOOD, DEGRADED, or CRITICAL."""
+        return self.manifest["vitality_signal"]["label"]
 
-        if filepath:
-            Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-            with open(filepath, "w") as f:
-                f.write(json_str)
-            return None
+    # ------------------------------------------------------------------
+    # Serialisation
+    # ------------------------------------------------------------------
 
-        return json_str
+    def to_json(self, indent: int = 2) -> str:
+        """Return the MIF-Lite manifest as a JSON string."""
+        return json.dumps(self.manifest, indent=indent, ensure_ascii=False)
+
+    def to_yaml(self) -> str:
+        """Return the MIF-Lite manifest as a YAML string."""
+        return yaml.dump(self.manifest, default_flow_style=False, allow_unicode=True)
+
+    # ------------------------------------------------------------------
+    # Human-readable summary
+    # ------------------------------------------------------------------
 
     def print_summary(self) -> None:
-        """Print human-readable summary to console."""
-        print("=" * 70)
-        print("DQF VALIDATION REPORT")
-        print("=" * 70)
-        print(f"\nSymbol: {self.symbol or 'N/A'}")
-        print(f"Source: {self.source or 'N/A'}")
-        print(f"Timestamp: {self.timestamp}")
-        print(f"\nOverall Status: {self.overall_status}")
-        print("\nSummary:")
-        print(f"  Total Checks: {self.total_checks}")
-        print(f"   Passed: {self.checks_passed}")
-        print(f"    Warning: {self.checks_warning}")
-        print(f"   Failed: {self.checks_failed}")
-        print(f"   Error: {self.checks_error}")
-        print("\n" + "=" * 70)
-        print("Check Results:")
-        print("=" * 70)
+        """Print a compact, human-readable validation summary."""
+        s = self.manifest["status"]
+        v = self.manifest["vitality_signal"]
+        p = self.manifest["provenance"]
+        sig = self.manifest["signature"]
 
-        for i, result in enumerate(self.results, 1):
-            status_icon = {
-                STATUS_PASS: "",
-                STATUS_WARNING: "",
-                STATUS_FAIL: "",
-                STATUS_ERROR: "",
-            }.get(result.status, "")
+        print("=" * 60)
+        print(f"DQF v{p['dqf_version']} — {p['mode']}")
+        print("=" * 60)
+        print(f"  Status   : {s['overall']}")
+        print(f"  MPI      : {s['purity_index']:.1f}/100")
+        print(f"  Gate     : {s['precondition_gate']}")
+        print(f"  Vitality : {v['label']} ({v['score']}) — {v['trend']}")
+        print(f"  Calendar : {p['calendar']}")
+        print(f"  UID      : {self.mif_uid[:48]}...")
+        print(f"  Sig type : {sig['type']}")
+        print()
+        print("  CORE checks:")
+        for check_id, status in self.core_results.items():
+            icon = "" if status == "PASS" else "" if status == "SKIP" else ""
+            print(f"    {icon} {check_id}: {status}")
+        print("  ADVISORY checks:")
+        for check_id, status in self.advisory_results.items():
+            icon = "" if status in ("PASS", "SKIP") else ""
+            print(f"    {icon} {check_id}: {status}")
+        print("=" * 60)
 
-            print(f"\n{i}. {status_icon} {result.check_name}")
-            print(f"   Status: {result.status}")
-            print(f"   Message: {result.message}")
-
-            if result.issues:
-                print(f"   Issues: {len(result.issues)}")
-                for issue in result.issues[:3]:  # Show first 3 issues
-                    print(f"     - {issue.message}")
-                if len(result.issues) > 3:
-                    print(f"     ... and {len(result.issues) - 3} more")
-
-        print("\n" + "=" * 70)
-
-    def get_failed_checks(self) -> list[CheckResult]:
-        """
-        Get list of failed checks.
-
-        Returns:
-            List of CheckResult objects with FAIL or ERROR status
-        """
-        return [r for r in self.results if r.status in {STATUS_FAIL, STATUS_ERROR}]
-
-    def get_warning_checks(self) -> list[CheckResult]:
-        """
-        Get list of checks with warnings.
-
-        Returns:
-            List of CheckResult objects with WARNING status
-        """
-        return [r for r in self.results if r.status == STATUS_WARNING]
-
-    def get_passed_checks(self) -> list[CheckResult]:
-        """
-        Get list of passed checks.
-
-        Returns:
-            List of CheckResult objects with PASS status
-        """
-        return [r for r in self.results if r.status == STATUS_PASS]
-
-    def is_valid(self) -> bool:
-        """
-        Check if validation passed overall.
-
-        Returns:
-            True if overall_status is PASS, False otherwise
-        """
-        return self.overall_status == STATUS_PASS
-
-    def has_warnings(self) -> bool:
-        """
-        Check if there are any warnings.
-
-        Returns:
-            True if there are warnings, False otherwise
-        """
-        return self.checks_warning > 0
-
-    def has_errors(self) -> bool:
-        """
-        Check if there are any errors or failures.
-
-        Returns:
-            True if there are errors/failures, False otherwise
-        """
-        return (self.checks_failed + self.checks_error) > 0
-
-    @property
-    def all_issues(self) -> list[Any]:
-        """
-        Get all issues from all check results.
-
-        Returns:
-            Flattened list of all CheckIssue objects from all results
-        """
-        issues = []
-        for result in self.results:
-            if result.issues:
-                issues.extend(result.issues)
-        return issues
-
-    @property
-    def check_results(self) -> dict[str, CheckResult]:
-        """
-        Get check results as a dictionary keyed by check name.
-
-        Returns:
-            Dictionary mapping check names to CheckResult objects
-        """
-        return {result.check_name: result for result in self.results}
+    # ------------------------------------------------------------------
+    # Dunder
+    # ------------------------------------------------------------------
 
     def __repr__(self) -> str:
-        """String representation of report."""
         return (
-            f"DQFReport(status={self.overall_status}, "
-            f"passed={self.checks_passed}/{self.total_checks})"
-        )
-
-    def __str__(self) -> str:
-        """Human-readable string representation."""
-        return (
-            f"DQF Report: {self.overall_status} ({self.checks_passed}/{self.total_checks} passed)"
+            f"DQFReport(status={self.overall_status!r}, "
+            f"mpi={self.purity_index:.1f}, "
+            f"gate={self.precondition_gate})"
         )
