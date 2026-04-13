@@ -1,7 +1,7 @@
 # DQF Troubleshooting Guide
 
-**Version**: 1.0.0  
-**Last Updated**: January 21, 2026
+**Version**: 1.1.0  
+**Last Updated**: April 12, 2026
 
 ---
 
@@ -75,99 +75,95 @@ data.rename(columns={
 
 ---
 
-### 3. YAML config validation failed
+### 3. DQFConfig: missing or invalid mode
 
 **Error Message**:
 ```
-ValueError: Invalid config: max_violation_rate must be between 0 and 1
+TypeError: config must be a DQFConfig instance ...
+TypeError: mode must be a DQFMode instance ...
 ```
 
-**Common Causes**:
-- Invalid parameter values
-- Wrong parameter names (typo)
-- Missing quotes around strings
+**Cause**: `DQFConfig()` without `mode` parameter, or passing a raw string.
 
 **Solution**:
-```yaml
-# ❌ WRONG
-check_2_integrity:
-  max_violation_rate: 1.5  # >1 is invalid
+```python
+# ❌ WRONG (v1.0 style — mode has no default in v1.1)
+config = DQFConfig()
+config = DQFConfig(mode="CERTIFICATION")  # string not accepted
 
 # ✅ CORRECT
+from dqf import DQFConfig, DQFMode
+config = DQFConfig(mode=DQFMode.CERTIFICATION)
+config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
+```
+
+**Common YAML mistake**:
+```yaml
+# ❌ WRONG (old v1.0 schema)
 check_2_integrity:
-  max_violation_rate: 0.01  # 1%
+  max_violation_rate: 0.01
+
+# ✅ CORRECT (v1.1 schema)
+mode: CERTIFICATION
+c4_max_consecutive_ffill: 3
+c4_warn_threshold: 2
 ```
 
 **Validation Tool**:
 ```python
-from dqf import DQFConfig
+from dqf import DQFConfig, DQFMode
 
 try:
     config = DQFConfig.from_yaml("config.yaml")
-    config.validate()
-    print("✅ Config valid")
-except ValueError as e:
+    print(f"✅ Config valid — mode={config.mode.value}")
+except (TypeError, ValueError) as e:
     print(f"❌ Config error: {e}")
 ```
 
 ---
 
-### 4. Check X failed with status FAIL
+### 4. VOID status — CORE check failure
 
 **Error Message**:
 ```
-DQFReport: overall_status=FAIL
-Check 2 (OHLCV Integrity): 5 violations detected
+DQFReport: overall_status=VOID, precondition_gate=0.0
 ```
 
-**How to Read CheckResult**:
+**How to diagnose**:
 ```python
-report = validator.validate(data)
+report = validator.validate(data, calendar="NYSE")
 
-# Overall status
-print(f"Overall: {report.overall_status}")
+print(f"Status : {report.overall_status}")      # VOID
+print(f"Gate   : {report.precondition_gate}")    # 0.0
+print(f"CORE   : {report.core_results}")         # {'C2': 'FAIL', ...}
+print(f"ADVISORY: {report.advisory_results}")
 
-# Find which checks failed
-for check_name, result in report.check_results.items():
-    if result.status == 'FAIL':
-        print(f"\n❌ {check_name} failed:")
-        print(f"   Severity: {result.severity}")
-        print(f"   Message: {result.message}")
-        
-        # Details (if available)
-        if result.details:
-            for key, value in result.details.items():
-                print(f"   {key}: {value}")
+# Human-readable breakdown
+report.print_summary()
 ```
 
-**Common FAIL Reasons per Check**:
+**Common CORE FAIL reasons**:
 
-**Check 1 (Source Uniqueness)**:
-- Missing metadata
-- Large data gaps (>30 days)
-
-**Check 2 (OHLCV Integrity)**:
-- High < Low violations (data corruption)
-- Close outside [Low, High] (impossible)
+**C2 (OHLCV Integrity)**:
+- `high < low` on any bar (data corruption)
+- `close` outside `[low, high]`
 - NaN in OHLC columns
 
-**Check 3 (Calendar Alignment)**:
-- Weekends present (NYSE data should exclude)
-- Too many holidays detected (suspicious)
+**C3 (Calendar Alignment)** — CERTIFICATION mode only:
+- `calendar=None` → `ERROR_MISSING_METADATA`
+- Unrecognised calendar name → `FAIL`
+- Weekend bars in NYSE/LSE/EURONEXT/FOREX_245 data → `WARN` (not VOID)
 
-**Check 4 (Forward-Fill Limits)**:
-- Excessive forward-filling (>3 consecutive days)
-- Stale data (prices frozen)
-
-**Check 5 (Index Traceability)**:
+**C5 (Index Traceability)**:
 - Duplicate timestamps
 - Non-chronological index
-- Missing timezone
+- Timezone-naive DatetimeIndex
 
-**Check 6 (Sanity Tests)**:
-- Extreme returns (>20% daily)
-- Zero volume for many days
-- Volatility spikes (>5× normal)
+**ADVISORY WARN reasons** (→ WARNING, not VOID):
+
+**C4 (Forward-Fill)**:
+- Consecutive identical values > `c4_warn_threshold`
+- More than `c4_max_consecutive_ffill` → FAIL (escalates to VOID)
 
 ---
 
@@ -230,23 +226,21 @@ print(f"Speed: {len(data)/elapsed:.0f} rows/sec")
 
 **Optimization Strategies**:
 
-**1. Note on selective checks** (v1.0.0):
-```yaml
-# In v1.0.0, all checks always run
-# Selective execution coming in v1.1.0
-check_6_sanity:
-  enabled: false  # Documented but not enforced
-```
-
-**2. Sample large datasets**:
+**1. Sample large datasets** (DIAGNOSTIC mode for speed):
 ```python
-# For initial validation, sample 10%
+# For initial validation, sample 10% in DIAGNOSTIC mode
+from dqf import DQFConfig, DQFMode, DQFValidator
+config    = DQFConfig(mode=DQFMode.DIAGNOSTIC)
+validator = DQFValidator(config)
+
 sample_data = data.sample(frac=0.1, random_state=42)
 report = validator.validate(sample_data)
 
-# If PASS, validate full dataset
-if report.overall_status == 'PASS':
-    full_report = validator.validate(data)
+# If not VOID, validate full dataset in CERTIFICATION mode
+if report.overall_status != 'VOID':
+    cert_config    = DQFConfig(mode=DQFMode.CERTIFICATION)
+    cert_validator = DQFValidator(cert_config)
+    full_report    = cert_validator.validate(data, calendar="NYSE")
 ```
 
 **3. Chunked processing**:
@@ -260,10 +254,10 @@ for chunk in pd.read_csv("large.csv", chunksize=chunk_size):
     results.append(report)
 ```
 
-**Expected Performance** (v1.0.0):
-- 100 days: ~1.2s
-- 1,000 days: ~3.5s
-- 10,000 days: ~25s
+**Expected Performance** (v1.1.0 — C6/C7 removed):
+- 100 days:    ~0.6s
+- 1,000 days:  ~2.0s
+- 10,000 days: ~15s
 
 ---
 
@@ -368,28 +362,36 @@ yamllint config.yaml
 
 ---
 
-### Check not running as expected
+### Understanding VOID vs WARNING
 
-**Note**: In DQF v1.0.0, all checks are always executed regardless of `enabled` flag.
+In v1.1, the overall status is no longer binary PASS/FAIL.
 
-**Understanding v1.0.0 Behavior**:
-```yaml
-# config.yaml
-check_6_sanity:
-  enabled: false  # This is documented but NOT enforced in v1.0.0
-```
+| Status | Gate | Meaning |
+|--------|------|---------|
+| `CERTIFIED` | 1.0 | All CORE pass, no advisory warns |
+| `WARNING`   | ≤0.8 | All CORE pass, at least one advisory WARN |
+| `VOID`      | 0.0 | At least one CORE check FAIL or ERROR |
 
 ```python
-# v1.0.0: Check still runs
-config = DQFConfig.from_yaml("config.yaml")
-validator = DQFValidator(config)
-report = validator.validate(data)
+report = validator.validate(data, calendar="NYSE")
 
-# All 7 checks execute regardless of 'enabled' flag
-print(f"Checks run: {report.total_checks}")  # 7
+if report.overall_status == "VOID":
+    # CORE failure — data unsafe
+    print(f"CORE failures: {report.core_results}")
+
+elif report.overall_status == "WARNING":
+    # Advisory issue — data usable but flagged
+    print(f"Advisory: {report.advisory_results}")
+    print(f"MPI: {report.purity_index:.1f}/100")
+    print(f"Gate: {report.precondition_gate}")  # ≤ 0.8
+
+else:  # CERTIFIED
+    print(f"Certified — MPI={report.purity_index:.1f}  UID={report.mif_uid}")
 ```
 
-**Future** (v1.1.0): Selective execution will respect `enabled` flag.
+> **Removed in v1.1**: `report.checks_passed`, `report.total_checks`,
+> `report.all_issues`, `report.check_results`, `report.timestamp`.
+> Use `report.core_results`, `report.advisory_results`, `report.purity_index` instead.
 
 ---
 

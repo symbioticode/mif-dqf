@@ -1,8 +1,8 @@
 # DQF API Reference
 
-**Version**: 1.0.0  
-**Last Updated**: January 21, 2026  
-**Status**: ✅ Production Ready (104/104 tests passing)  
+**Version**: 1.1.0  
+**Last Updated**: April 12, 2026  
+**Status**: ✅ Production Ready (189/189 tests passing)  
 **Python**: 3.10+
 
 ---
@@ -54,30 +54,33 @@ pip install dqf
 
 ```python
 import pandas as pd
-from dqf import DQFValidator, DQFConfig
+from pathlib import Path
+from dqf import DQFValidator, DQFConfig, DQFMode
 
-# Load your data
-data = pd.read_csv("btc_usd.csv", index_col=0, parse_dates=True)
+# Load your data (timezone-aware index required)
+data = pd.read_csv("spy.csv", index_col=0, parse_dates=True)
+data.index = data.index.tz_localize("UTC")
 
-# Create validator with default config
-config = DQFConfig()
+# CERTIFICATION mode — strict, deterministic, calendar required
+config    = DQFConfig(mode=DQFMode.CERTIFICATION)
 validator = DQFValidator(config)
+report    = validator.validate(data, calendar="NYSE")
 
-# Validate
-report = validator.validate(data, symbol="BTC-USD", source="yahoo")
-
-# Check results
-if report.overall_status == "PASS":
-    print(f"✅ Data validated: {report.checks_passed}/7 checks passed")
+if report.is_certified:
+    print(f"✅ CERTIFIED  MPI={report.purity_index:.1f}/100  gate={report.precondition_gate}")
+    print(f"   MIF-UID: {report.mif_uid}")
     clean_data = report.cleaned_data
 else:
-    print(f"❌ Validation failed: {len(report.all_issues)} issues")
-    for issue in report.all_issues:
-        print(f"  - {issue.check_name}: {issue.message}")
+    print(f"❌ {report.overall_status}  (gate={report.precondition_gate})")
+    print(f"   CORE:     {report.core_results}")
+    print(f"   ADVISORY: {report.advisory_results}")
 
-# Export report
-report.to_yaml("validation_report.yaml")
-report.to_json("validation_report.json")
+# Export MIF-Lite manifest (to_json / to_yaml return strings)
+Path("validation_report.json").write_text(report.to_json())
+Path("validation_report.yaml").write_text(report.to_yaml())
+
+# Human-readable summary
+report.print_summary()
 ```
 
 ---
@@ -232,102 +235,110 @@ from dqf import DQFReport
 
 ---
 
-#### Attributes
+#### Properties (v1.1)
+
+All properties are read-only accessors on the underlying MIF-Lite manifest dict.
 
 ```python
-overall_status: str              # 'PASS', 'WARNING', or 'FAIL'
-checks_passed: int               # Number of checks that passed
-total_checks: int                # Total number of checks run
-check_results: Dict[str, CheckResult]  # Individual check results
-all_issues: List[CheckIssue]     # All issues across all checks
-cleaned_data: pd.DataFrame       # Validated DataFrame (if PASS)
-provenance: Dict                 # Full provenance chain
-timestamp: str                   # Validation timestamp (ISO 8601)
-```
+# Status
+overall_status: str     # 'CERTIFIED', 'WARNING', or 'VOID'
+is_certified: bool      # True only when overall_status == 'CERTIFIED'
+purity_index: float     # MIF Purity Index — [0.0, 100.0]. 100.0 = zero intervention
+precondition_gate: float  # 1.0 (CERTIFIED) | 0.8 (WARNING, MPI-capped) | 0.0 (VOID)
 
-**Type Details**:
-- `timestamp`: String in ISO 8601 format (e.g., `"2026-01-21T14:30:00.123456+00:00"`)
-  - **Already formatted** - do NOT call `.isoformat()` again
-  - Type: `str`, not `datetime`
-  - Format: `YYYY-MM-DDTHH:MM:SS.ffffff+HH:MM` (with timezone offset)
+# Identity
+mif_uid: str            # 'sha256:<hex>' — deterministic, reproducible
+dqf_version: str        # e.g. '1.1.0'
+mode: str               # 'CERTIFICATION' or 'DIAGNOSTIC'
+calendar: str           # Declared calendar or 'UNKNOWN'
+
+# Check results
+core_results: dict      # {'C2': 'PASS', 'C3': 'PASS', 'C5': 'PASS', 'PROD': 'PASS'}
+advisory_results: dict  # {'C1': 'SKIP', 'C4': 'PASS'}
+
+# Vitality signal (D-SIG v0.5)
+vitality_score: int     # Integer in [0, 100]
+vitality_label: str     # 'EXCELLENT' | 'GOOD' | 'DEGRADED' | 'CRITICAL'
+
+# Data
+cleaned_data: pd.DataFrame  # Validated DataFrame (passthrough in Phase 1)
+
+# Raw manifest
+manifest: dict          # Full MIF-Lite dict — single source of truth
+```
 
 **Example**:
 ```python
-report = validator.validate(data)
+report = validator.validate(data, calendar="NYSE")
 
-# Access attributes
-print(f"Status: {report.overall_status}")        # 'PASS' or 'FAIL'
-print(f"Passed: {report.checks_passed}/7")        # e.g., "5/7"
-print(f"Issues: {len(report.all_issues)}")        # e.g., 2
+print(f"Status  : {report.overall_status}")          # 'CERTIFIED'
+print(f"MPI     : {report.purity_index:.1f}/100")    # '100.0/100'
+print(f"Gate    : {report.precondition_gate}")        # '1.0'
+print(f"UID     : {report.mif_uid[:48]}...")
+print(f"Vitality: {report.vitality_label}")           # 'EXCELLENT'
+print(f"CORE    : {report.core_results}")
+print(f"ADVISORY: {report.advisory_results}")
 
-# Access individual check
-result = report.check_results['check_2_integrity']
-print(f"OHLCV Integrity: {result.status}")        # 'PASS' or 'FAIL'
-
-# Timestamp (already formatted string)
-print(report.timestamp)                           # ✅ Correct
-# print(report.timestamp.isoformat())             # ❌ AttributeError
+# Use certified data downstream
+if report.is_certified:
+    run_backtest(report.cleaned_data)
 ```
+
+> **Removed in v1.1** (were in v1.0): `checks_passed`, `total_checks`, `check_results`,
+> `all_issues`, `timestamp`, `provenance` (replaced by `manifest["provenance"]`).
 
 ---
 
 #### to_yaml()
 
 ```python
-to_yaml(filepath: str) -> None
+to_yaml() -> str
 ```
 
-**Description**: Export report as YAML file.
+**Description**: Return the MIF-Lite manifest as a YAML string.
 
-**Parameters**:
-- `filepath` (str): Path to output YAML file
-
-**Raises**:
-- `IOError`: If file cannot be written
+> **Breaking change from v1.0**: No longer writes to a file. Returns a `str`.
+> Use `pathlib.Path("report.yaml").write_text(report.to_yaml())` to persist.
 
 **Example**:
 ```python
-report = validator.validate(data)
-report.to_yaml("validation_report.yaml")
+from pathlib import Path
+
+report = validator.validate(data, calendar="NYSE")
+Path("report.yaml").write_text(report.to_yaml())
 ```
 
-**Output Format**:
+**Output Format** (MIF-Lite manifest):
 ```yaml
-overall_status: PASS
-checks_passed: 7
-total_checks: 7
-timestamp: '2026-01-20T14:30:00.123456+00:00'
-
-check_results:
-  check_1_source:
-    status: PASS
-    severity: INFO
-    message: "Source uniqueness validated successfully"
-    details:
-      source: "yahoo"
-      has_metadata: true
-  
-  check_2_integrity:
-    status: PASS
-    severity: INFO
-    message: "OHLCV integrity validated successfully"
-    details:
-      high_low_violations: 0
-      close_range_violations: 0
-      nan_count: 0
-      total_rows: 100
-
-all_issues: []
-
+'@context': https://mif.dev/v1
+'@type': DataCertification
+mif_uid: sha256:a3f9...
+status:
+  overall: CERTIFIED
+  purity_index: 100.0
+  precondition_gate: 1.0
+checks:
+  core:
+    C2: PASS
+    C3: PASS
+    C5: PASS
+    PROD: PASS
+  advisory:
+    C1: SKIP
+    C4: PASS
+vitality_signal:
+  score: 100
+  label: EXCELLENT
+  trend: STABLE
 provenance:
-  source: "yahoo"
-  symbol: "BTC-USD"
-  timestamp: "2026-01-20T14:30:00.123456+00:00"
-  checks_run: 7
-  date_range:
-    start: "2024-01-01"
-    end: "2024-04-09"
-    total_days: 100
+  dqf_version: 1.1.0
+  mode: CERTIFICATION
+  source_hash: sha256:...
+  calendar: NYSE
+  cleaning_log_uri: null
+signature:
+  type: sha256_provisional
+  value: ...
 ```
 
 ---
@@ -335,19 +346,23 @@ provenance:
 #### to_json()
 
 ```python
-to_json(filepath: str, indent: int = 2) -> None
+to_json(indent: int = 2) -> str
 ```
 
-**Description**: Export report as JSON file.
+**Description**: Return the MIF-Lite manifest as a JSON string.
+
+> **Breaking change from v1.0**: No longer writes to a file. Returns a `str`.
+> Use `pathlib.Path("report.json").write_text(report.to_json())` to persist.
 
 **Parameters**:
-- `filepath` (str): Path to output JSON file
-- `indent` (int, optional): JSON indentation level (default: 2)
+- `indent` (int, optional): JSON indentation (default: 2)
 
 **Example**:
 ```python
-report = validator.validate(data)
-report.to_json("validation_report.json")
+from pathlib import Path
+
+report = validator.validate(data, calendar="NYSE")
+Path("report.json").write_text(report.to_json())
 ```
 
 ---
@@ -433,11 +448,11 @@ INDIVIDUAL CHECK RESULTS
 
 ### DQFConfig
 
-**Description**: Configuration manager for DQF validation.
+**Description**: Configuration dataclass for DQF v1.1 validation.
 
 **Import**:
 ```python
-from dqf import DQFConfig
+from dqf import DQFConfig, DQFMode
 ```
 
 ---
@@ -445,38 +460,39 @@ from dqf import DQFConfig
 #### Constructor
 
 ```python
-DQFConfig(**kwargs)
+DQFConfig(
+    mode: DQFMode,                    # REQUIRED — no default
+    c4_max_consecutive_ffill: int = 3,
+    c4_warn_threshold: int = 2,
+    c1_enabled: bool = False,         # DAL-pending (Phase 2+)
+)
 ```
 
-**Parameters**: Accepts nested dictionaries for each check configuration.
+**Parameters**:
+- `mode` (**required**): `DQFMode.CERTIFICATION` or `DQFMode.DIAGNOSTIC`. Raises `TypeError` if absent or wrong type.
+- `c4_max_consecutive_ffill`: Maximum consecutive identical values before C4 FAILS (default: 3).
+- `c4_warn_threshold`: Consecutive repeats before C4 WARNS (default: 2). Must be < `c4_max_consecutive_ffill`.
+- `c1_enabled`: Set `True` when DAL is connected (Phase 2+). Default `False` → C1 = SKIP.
+
+**Raises**:
+- `TypeError`: If `mode` is missing or not a `DQFMode` instance.
+- `ValueError`: If `c4_warn_threshold >= c4_max_consecutive_ffill`.
 
 **Example**:
 ```python
-from dqf import DQFConfig
+from dqf import DQFConfig, DQFMode
 
-# Default configuration
-config = DQFConfig()
+# CERTIFICATION mode (strict — for production pipelines)
+config = DQFConfig(mode=DQFMode.CERTIFICATION)
 
-# Custom configuration
+# DIAGNOSTIC mode (lenient — for exploration / CI)
+config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
+
+# Custom ffill thresholds
 config = DQFConfig(
-    check_1_source={
-        'enabled': True,
-        'require_metadata': True,
-        'max_gap_days': 7
-    },
-    check_2_integrity={
-        'enabled': True,
-        'max_violation_rate': 0.005  # 0.5% (stricter than default 1%)
-    },
-    check_4_ffill={
-        'enabled': True,
-        'max_consecutive': 1,  # No more than 1 day forward-fill
-        'severity': 'CRITICAL'
-    },
-    output={
-        'log_dir': 'custom_logs',
-        'report_dir': 'custom_reports'
-    }
+    mode=DQFMode.CERTIFICATION,
+    c4_warn_threshold=1,
+    c4_max_consecutive_ffill=2,
 )
 ```
 
@@ -502,22 +518,11 @@ from_yaml(cls, filepath: str) -> DQFConfig
 - `yaml.YAMLError`: If YAML is malformed
 
 **Example**:
-```python
-# config.yaml
-dqf_version: "1.0.0"
-
-checks:
-  check_2_integrity:
-    enabled: true
-    max_violation_rate: 0.01
-  
-  check_4_ffill:
-    enabled: true
-    max_consecutive: 3
-
-output:
-  log_dir: "logs"
-  report_dir: "reports"
+```yaml
+# config.yaml (v1.1)
+mode: CERTIFICATION
+c4_max_consecutive_ffill: 3
+c4_warn_threshold: 2
 ```
 
 ```python
@@ -547,14 +552,9 @@ from_dict(cls, config_dict: Dict) -> DQFConfig
 **Example**:
 ```python
 config_dict = {
-    'check_2_integrity': {
-        'enabled': True,
-        'max_violation_rate': 0.005
-    },
-    'check_6_sanity': {
-        'enabled': True,
-        'max_return_threshold': 0.15
-    }
+    "mode": "CERTIFICATION",
+    "c4_max_consecutive_ffill": 3,
+    "c4_warn_threshold": 2,
 }
 
 config = DQFConfig.from_dict(config_dict)
@@ -1416,9 +1416,15 @@ data.sort_index(inplace=True)
 
 ---
 
-## Check 6: Sanity Tests
+## ~~Check 6: Sanity Tests~~ — REMOVED in v1.1
 
-**Purpose**: Detect statistical anomalies (extreme returns, zero volume, volatility spikes).
+> **REMOVED in DQF v1.1.** Statistical sanity tests have been migrated to MIF Layer 1.
+> The `SanityTestsCheck` class and `check_6_sanity.py` no longer exist.
+> This section is kept for historical reference only. Do **not** use in new code.
+
+---
+
+**Purpose (v1.0 legacy)**: Detect statistical anomalies (extreme returns, zero volume, volatility spikes).
 
 **Import**:
 ```python
@@ -1550,9 +1556,16 @@ if result.details['extreme_returns'] > 0 and result.details['volatility_spikes']
 
 ---
 
-## Check 7: Comprehensive Logging
+## ~~Check 7: Comprehensive Logging~~ — REMOVED in v1.1
 
-**Purpose**: Track complete provenance chain and export as JSON.
+> **REMOVED in DQF v1.1.** Provenance tracking is now handled by the **PROD Envelope**,
+> which produces a MIF-Lite manifest (`.mif.json`) with cryptographic signature.
+> The `ComprehensiveLoggingCheck` class and `check_7_logging.py` no longer exist.
+> This section is kept for historical reference only. Do **not** use in new code.
+
+---
+
+**Purpose (v1.0 legacy)**: Track complete provenance chain and export as JSON.
 
 **Import**:
 ```python

@@ -1,64 +1,70 @@
 #!/usr/bin/env python3
 """
-DQF Example 03: Batch Processing
+DQF Example 03: Batch Processing — v1.1
 
 Demonstrates:
-- Validating multiple symbols/files
-- Aggregating results
-- Filtering PASS/FAIL datasets
-- Generating summary report
-- Parallel processing (optional)
+- Validating multiple symbols in DIAGNOSTIC mode
+- Aggregating MPI/gate across a portfolio
+- Filtering CERTIFIED vs VOID datasets
+- Generating a consolidated CSV report
+- Custom ffill thresholds for a strict pipeline
 
 Usage:
     python examples/03_batch_processing.py
 """
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-from dqf import DQFConfig, DQFValidator
+from dqf import DQFConfig, DQFMode, DQFValidator
 
+
+# ---------------------------------------------------------------------------
+# Synthetic data factory
+# ---------------------------------------------------------------------------
 
 def create_sample_datasets() -> dict[str, pd.DataFrame]:
-    """Create sample datasets for multiple symbols"""
+    """Create sample datasets for several symbols."""
     symbols = ["BTC-USD", "ETH-USD", "SPY", "GLD", "EUR-USD"]
-    datasets = {}
+    datasets: dict[str, pd.DataFrame] = {}
 
-    base_date = pd.date_range(start="2024-01-01", end="2024-07-06", freq="D")
-
+    # BTC/ETH/EUR-USD: daily (includes weekends — CRYPTO_247 / FOREX_245)
+    # SPY / GLD: weekday-only (NYSE)
     for symbol in symbols:
-        # Vary base price per symbol
         base_prices = {
-            "BTC-USD": 45000,
-            "ETH-USD": 2500,
-            "SPY": 450,
-            "GLD": 180,
+            "BTC-USD": 45_000.0,
+            "ETH-USD": 2_500.0,
+            "SPY":     450.0,
+            "GLD":     180.0,
             "EUR-USD": 1.08,
         }
+        base = base_prices[symbol]
 
-        base_price = base_prices[symbol]
+        if symbol in ("SPY", "GLD"):
+            dates = pd.bdate_range("2024-01-02", periods=60, freq="B", tz="UTC")
+        else:
+            dates = pd.date_range("2024-01-01", periods=60, freq="D", tz="UTC")
 
+        n = len(dates)
         data = pd.DataFrame(
             {
-                "open": [base_price + i * 0.1 for i in range(len(base_date))],
-                "high": [base_price * 1.01 + i * 0.1 for i in range(len(base_date))],
-                "low": [base_price * 0.99 + i * 0.1 for i in range(len(base_date))],
-                "close": [base_price + i * 0.1 for i in range(len(base_date))],
-                "volume": [1000000 + i * 1000 for i in range(len(base_date))],
+                "open":   [base + i * 0.1 for i in range(n)],
+                "high":   [base * 1.01 + i * 0.1 for i in range(n)],
+                "low":    [base * 0.99 + i * 0.1 for i in range(n)],
+                "close":  [base + i * 0.1 for i in range(n)],
+                "volume": [1_000_000 + i * 1_000 for i in range(n)],
             },
-            index=base_date,
+            index=dates,
         )
 
-        # Introduce issues in some datasets (for demonstration)
+        # Introduce a forward-fill run in EUR-USD
         if symbol == "EUR-USD":
-            # Add forward-fill issue
             data.loc[data.index[10:15], "close"] = data.loc[data.index[9], "close"]
 
+        # Introduce OHLCV violation in GLD
         if symbol == "GLD":
-            # Add OHLCV violation (High < Low)
             data.loc[data.index[50], "high"] = data.loc[data.index[50], "low"] - 1
 
         datasets[symbol] = data
@@ -66,276 +72,197 @@ def create_sample_datasets() -> dict[str, pd.DataFrame]:
     return datasets
 
 
-def batch_validate_sequential(
-    datasets: dict[str, pd.DataFrame], config: DQFConfig
+# ---------------------------------------------------------------------------
+# Batch validation
+# ---------------------------------------------------------------------------
+
+CALENDAR_MAP = {
+    "BTC-USD": "CRYPTO_247",
+    "ETH-USD": "CRYPTO_247",
+    "SPY":     "NYSE",
+    "GLD":     "NYSE",
+    "EUR-USD": "FOREX_245",
+}
+
+
+def batch_validate(
+    datasets: dict[str, pd.DataFrame],
+    config: DQFConfig,
+    mode_label: str = "DIAGNOSTIC",
 ) -> dict[str, object]:
-    """Validate datasets sequentially"""
-    print("🔄 Sequential Validation")
+    """Validate a dict of DataFrames; returns {symbol: DQFReport | None}."""
+    print(f"Batch validation — mode={mode_label}")
     print("-" * 70)
 
     validator = DQFValidator(config)
-    results = {}
+    results: dict[str, object] = {}
 
     for symbol, data in datasets.items():
-        print(f"   Validating {symbol}... ", end="", flush=True)
-
+        calendar = CALENDAR_MAP.get(symbol)
         try:
-            report = validator.validate(data)
+            if config.mode == DQFMode.CERTIFICATION:
+                report = validator.validate(data, calendar=calendar)
+            else:
+                report = validator.validate(data)
             results[symbol] = report
 
-            status_icon = "✅" if report.overall_status == "PASS" else "❌"
-            print(f"{status_icon} {report.overall_status}")
+            status = report.overall_status
+            mpi = report.purity_index
+            print(f"  {symbol:12s}  {status:11s}  MPI={mpi:.1f}  gate={report.precondition_gate}")
 
-        except Exception as e:
-            print(f"❌ ERROR: {str(e)}")
+        except Exception as exc:
+            print(f"  {symbol:12s}  ERROR — {exc}")
             results[symbol] = None
 
     print()
     return results
 
 
-def generate_summary_report(results: dict[str, object]) -> None:
-    """Generate summary report across all validations"""
+# ---------------------------------------------------------------------------
+# Summary helpers
+# ---------------------------------------------------------------------------
+
+def print_summary(results: dict[str, object]) -> None:
+    """Print aggregate summary."""
     print("=" * 70)
-    print("📊 BATCH VALIDATION SUMMARY")
+    print("BATCH VALIDATION SUMMARY")
     print("=" * 70)
+
+    certified = [s for s, r in results.items() if r and r.is_certified]
+    warned    = [s for s, r in results.items() if r and r.overall_status == "WARNING"]
+    voided    = [s for s, r in results.items() if r and r.overall_status == "VOID"]
+    errors    = [s for s, r in results.items() if r is None]
+
+    print(f"  Total     : {len(results)}")
+    print(f"  CERTIFIED : {len(certified)}  {certified}")
+    print(f"  WARNING   : {len(warned)}   {warned}")
+    print(f"  VOID      : {len(voided)}   {voided}")
+    print(f"  ERROR     : {len(errors)}   {errors}")
     print()
 
-    # Count PASS/FAIL
-    passed = sum(1 for r in results.values() if r and r.overall_status == "PASS")
-    failed = sum(1 for r in results.values() if r and r.overall_status == "FAIL")
-    errors = sum(1 for r in results.values() if r is None)
-
-    print(f"Total Datasets:  {len(results)}")
-    print(f"✅ Passed:        {passed}")
-    print(f"❌ Failed:        {failed}")
-    print(f"⚠️  Errors:        {errors}")
-    print()
-
-    # Detailed results per symbol
-    print("Detailed Results:")
-    print("-" * 70)
-
-    for symbol, report in results.items():
-        if report is None:
-            print(f"❌ {symbol:12s} - ERROR (validation crashed)")
-            continue
-
-        status_icon = "✅" if report.overall_status == "PASS" else "❌"
-        checks_str = f"{report.checks_passed}/{report.total_checks}"
-        issues_str = f"{len(report.all_issues)} issues"
-
-        print(
-            f"{status_icon} {symbol:12s} - {report.overall_status:4s} | "
-            f"Checks: {checks_str} | {issues_str}"
-        )
-
-        # Show first issue (if any)
-        if report.all_issues:
-            first_issue = report.all_issues[0]
-            print(f"   └─ [{first_issue.severity}] {first_issue.message[:60]}")
-
+    if certified:
+        avg_mpi = sum(r.purity_index for s, r in results.items()
+                      if r and r.is_certified) / len(certified)
+        print(f"  Avg MPI (certified) : {avg_mpi:.1f}/100")
     print()
 
 
-def filter_clean_datasets(
-    datasets: dict[str, pd.DataFrame], results: dict[str, object]
+def filter_certified(
+    datasets: dict[str, pd.DataFrame],
+    results: dict[str, object],
 ) -> dict[str, pd.DataFrame]:
-    """Filter only datasets that passed validation"""
-    print("🔍 Filtering Clean Datasets")
-    print("-" * 70)
-
-    clean = {}
-
-    for symbol, report in results.items():
-        if report and report.overall_status == "PASS":
-            clean[symbol] = report.cleaned_data
-            print(f"   ✅ {symbol:12s} - {len(report.cleaned_data)} rows")
-
+    """Return only certified DataFrames."""
+    clean = {s: r.cleaned_data for s, r in results.items() if r and r.is_certified}
+    print(f"Certified datasets : {len(clean)}/{len(datasets)}")
+    for symbol in clean:
+        print(f"  OK  {symbol}")
     print()
-    print(f"✅ {len(clean)}/{len(datasets)} datasets passed validation")
-    print()
-
     return clean
 
 
 def export_results(results: dict[str, object], output_dir: Path) -> None:
-    """Export all reports to files"""
-    print("💾 Exporting Results")
-    print("-" * 70)
-
+    """Write per-symbol JSON manifests."""
     output_dir.mkdir(parents=True, exist_ok=True)
-
     for symbol, report in results.items():
         if report is None:
             continue
-
-        # Create symbol-specific directory
-        symbol_dir = output_dir / symbol.replace("/", "_")
-        symbol_dir.mkdir(parents=True, exist_ok=True)
-
-        # Export report
-        yaml_path = symbol_dir / "validation_report.yaml"
-        report.to_yaml(str(yaml_path))
-
-        # Export cleaned data (if PASS)
-        if report.overall_status == "PASS":
-            csv_path = symbol_dir / f"{symbol.replace('/', '_')}_clean.csv"
-            report.cleaned_data.to_csv(csv_path)
-            print(f"   ✅ {symbol:12s} - Report + Clean data")
-        else:
-            print(f"   ❌ {symbol:12s} - Report only (failed validation)")
-
-    print()
-    print(f"📁 All results saved to: {output_dir}")
+        safe = symbol.replace("/", "_")
+        sym_dir = output_dir / safe
+        sym_dir.mkdir(exist_ok=True)
+        (sym_dir / "manifest.json").write_text(report.to_json())
+        if report.is_certified:
+            report.cleaned_data.to_csv(sym_dir / f"{safe}_clean.csv")
+    print(f"Results saved to : {output_dir}")
     print()
 
 
-def create_consolidated_report(results: dict[str, object], output_path: Path) -> None:
-    """Create single consolidated CSV report"""
-    print("📄 Creating Consolidated Report")
-    print("-" * 70)
-
+def create_consolidated_csv(results: dict[str, object], output_path: Path) -> None:
+    """Write a one-row-per-symbol CSV summary."""
     rows = []
-
     for symbol, report in results.items():
         if report is None:
-            rows.append(
-                {
-                    "symbol": symbol,
-                    "status": "ERROR",
-                    "checks_passed": 0,
-                    "total_checks": 0,
-                    "issues_count": 0,
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
-            continue
-
-        rows.append(
-            {
-                "symbol": symbol,
-                "status": report.overall_status,
-                "checks_passed": report.checks_passed,
-                "total_checks": report.total_checks,
-                "issues_count": len(report.all_issues),
-                "timestamp": report.timestamp,
-            }
-        )
-
-    df = pd.DataFrame(rows)
-    df.to_csv(output_path, index=False)
-
-    print(f"   ✅ Consolidated report: {output_path}")
+            rows.append({"symbol": symbol, "status": "ERROR",
+                         "mpi": 0.0, "gate": 0.0, "mif_uid": ""})
+        else:
+            rows.append({
+                "symbol":  symbol,
+                "status":  report.overall_status,
+                "mpi":     report.purity_index,
+                "gate":    report.precondition_gate,
+                "mif_uid": report.mif_uid,
+            })
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+    print(f"Consolidated CSV : {output_path}")
     print()
 
+
+# ---------------------------------------------------------------------------
+# Main examples
+# ---------------------------------------------------------------------------
 
 def example_basic_batch():
-    """Example: Basic batch processing"""
+    """Basic batch in DIAGNOSTIC mode."""
     print("=" * 70)
-    print("Example: Basic Batch Processing")
+    print("Example 1: Basic Batch (DIAGNOSTIC mode)")
     print("=" * 70)
     print()
 
-    # Create sample datasets
-    print("📊 Creating sample datasets...")
     datasets = create_sample_datasets()
-    print(f"✅ Created {len(datasets)} datasets")
-    print(f"   Symbols: {', '.join(datasets.keys())}")
-    print()
+    config   = DQFConfig(mode=DQFMode.DIAGNOSTIC)
 
-    # Configure validator
-    config = DQFConfig()
+    results = batch_validate(datasets, config, mode_label="DIAGNOSTIC")
+    print_summary(results)
+    filter_certified(datasets, results)
 
-    # Run batch validation
-    results = batch_validate_sequential(datasets, config)
-
-    # Generate summary
-    generate_summary_report(results)
-
-    # Filter clean datasets
-    clean_datasets = filter_clean_datasets(datasets, results)
-    print(f"✅ {len(clean_datasets)} datasets passed validation")
-
-    # Export results
     output_dir = Path("_work/examples/batch_results")
     export_results(results, output_dir)
-
-    # Create consolidated report
-    consolidated_path = output_dir / "consolidated_report.csv"
-    create_consolidated_report(results, consolidated_path)
+    create_consolidated_csv(results, output_dir / "consolidated_report.csv")
 
 
-def example_custom_config_batch():
-    """Example: Batch with custom config (stricter validation)"""
+def example_strict_batch():
+    """Strict batch in CERTIFICATION mode with tight ffill threshold."""
     print("=" * 70)
-    print("Example: Batch with Strict Configuration")
+    print("Example 2: Strict Batch (CERTIFICATION mode)")
     print("=" * 70)
     print()
 
-    # Strict config
-    config = DQFConfig(
-        check_2_integrity={
-            "enabled": True,
-            "max_violation_rate": 0.0,  # Zero tolerance
-        },
-        check_4_ffill={
-            "enabled": True,
-            "max_consecutive": 1,  # Very strict
-            "severity": "CRITICAL",
-        },
+    datasets = create_sample_datasets()
+    config   = DQFConfig(
+        mode=DQFMode.CERTIFICATION,
+        c4_warn_threshold=1,        # warn after 1 consecutive repeat
+        c4_max_consecutive_ffill=2, # fail after 2
     )
 
-    print("⚙️  Using strict configuration:")
-    print("   - Zero tolerance for OHLCV violations")
-    print("   - Max 1 day forward-fill")
-    print()
+    results = batch_validate(datasets, config, mode_label="CERTIFICATION")
+    print_summary(results)
 
-    # Create datasets
-    datasets = create_sample_datasets()
-
-    # Validate
-    results = batch_validate_sequential(datasets, config)
-
-    # Summary
-    generate_summary_report(results)
-
-    print("💡 Notice: More datasets failed with strict config")
+    print("Note: GLD fails C2 (High < Low). EUR-USD may trigger C4 warning.")
     print()
 
 
 def main():
     print("\n")
-    print("📦 DQF Batch Processing Examples")
+    print("DQF v1.1 — Batch Processing Examples")
     print("=" * 70)
     print()
 
-    # Run examples
     example_basic_batch()
 
     if sys.stdin.isatty():
-        input("Press Enter to run strict config example...")
+        input("Press Enter to run strict certification batch...")
     print()
 
-    example_custom_config_batch()
+    example_strict_batch()
 
-    # Final summary
     print("=" * 70)
-    print("✅ BATCH PROCESSING COMPLETE")
+    print("BATCH PROCESSING COMPLETE")
     print("=" * 70)
     print()
-    print("💡 Key Features:")
-    print("   ✅ Validate multiple symbols/files in one run")
-    print("   ✅ Aggregate results with summary statistics")
-    print("   ✅ Filter only clean datasets for downstream use")
-    print("   ✅ Export reports per symbol + consolidated CSV")
-    print()
-    print("📖 Next Steps:")
-    print("   - Use clean datasets in your analysis pipeline")
-    print("   - Investigate failed datasets (detailed reports)")
-    print("   - Adjust config thresholds based on results")
-    print()
-    print("🔧 Advanced: See examples/04_custom_check.py for custom checks")
+    print("Key takeaways:")
+    print("  - DIAGNOSTIC mode: runs all checks, no calendar required")
+    print("  - CERTIFICATION mode: calendar required, VOID if CORE check fails")
+    print("  - report.purity_index (0-100) and report.precondition_gate replace checks_passed/total")
+    print("  - report.is_certified is the primary pass/fail signal")
     print()
 
 
