@@ -71,10 +71,10 @@ class CheckSeverity(Enum):
 # Overall validation status constants (DQFReport.overall_status)
 # ---------------------------------------------------------------------------
 
-STATUS_CERTIFIED = "CERTIFIED"   # All CORE checks PASS
-STATUS_WARNING = "WARNING"       # CORE PASS, at least one ADVISORY WARN
-STATUS_VOID = "VOID"             # At least one CORE FAIL or bypass — gate = 0.0
-STATUS_FAIL = "FAIL"             # Unexpected pipeline error
+STATUS_CERTIFIED = "CERTIFIED"  # All CORE checks PASS
+STATUS_WARNING = "WARNING"  # CORE PASS, at least one ADVISORY WARN
+STATUS_VOID = "VOID"  # At least one CORE FAIL or bypass — gate = 0.0
+STATUS_FAIL = "FAIL"  # Unexpected pipeline error
 
 # ---------------------------------------------------------------------------
 # Per-check status constants (CheckResult.status)
@@ -107,7 +107,7 @@ SEVERITY_CRITICAL = CheckSeverity.CRITICAL.value
 
 PRECONDITION_GATE: dict[str, float] = {
     STATUS_CERTIFIED: 1.0,
-    STATUS_WARNING:   0.8,
-    STATUS_FAIL:      0.2,
-    STATUS_VOID:      0.0,
+    STATUS_WARNING: 0.8,
+    STATUS_FAIL: 0.2,
+    STATUS_VOID: 0.0,
 }

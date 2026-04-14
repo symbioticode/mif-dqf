@@ -21,7 +21,7 @@ In both modes:
     as calendar_removal interventions for MPI computation.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -88,7 +88,7 @@ class CalendarAlignmentCheck(BaseCheck):
             self._validate_datetime_index(data)
 
             mode: DQFMode = kwargs.get("mode", DQFMode.DIAGNOSTIC)  # Session 4 rewrite
-            calendar: Optional[str] = kwargs.get("calendar", None)
+            calendar: str | None = kwargs.get("calendar", None)
             require_timezone: bool = kwargs.get("require_timezone", True)
             allow_weekends: bool = kwargs.get("allow_weekends", False)
 
@@ -148,7 +148,7 @@ class CalendarAlignmentCheck(BaseCheck):
     def _run_certification(
         self,
         data: pd.DataFrame,
-        calendar: Optional[str],
+        calendar: str | None,
         details: dict,
         allow_weekends: bool,
     ) -> CheckResult:
@@ -188,8 +188,8 @@ class CalendarAlignmentCheck(BaseCheck):
     def _run_diagnostic(
         self,
         data: pd.DataFrame,
-        symbol: Optional[str],
-        calendar: Optional[str],
+        symbol: str | None,
+        calendar: str | None,
         details: dict,
         allow_weekends: bool,
     ) -> CheckResult:

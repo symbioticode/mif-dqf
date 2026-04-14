@@ -5,9 +5,8 @@ DQFConfig requires an explicit operational mode (DQFMode).
 There is no default — callers must declare intent.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -61,14 +60,10 @@ class DQFConfig:
             )
         if self.c4_max_consecutive_ffill < 1:
             raise ValueError(
-                f"c4_max_consecutive_ffill must be >= 1, "
-                f"got {self.c4_max_consecutive_ffill}"
+                f"c4_max_consecutive_ffill must be >= 1, " f"got {self.c4_max_consecutive_ffill}"
             )
         if self.c4_warn_threshold < 1:
-            raise ValueError(
-                f"c4_warn_threshold must be >= 1, "
-                f"got {self.c4_warn_threshold}"
-            )
+            raise ValueError(f"c4_warn_threshold must be >= 1, " f"got {self.c4_warn_threshold}")
         if self.c4_warn_threshold >= self.c4_max_consecutive_ffill:
             raise ValueError(
                 f"c4_warn_threshold ({self.c4_warn_threshold}) must be "
@@ -103,16 +98,14 @@ class DQFConfig:
 
         mode_str = data.pop("mode", None)
         if mode_str is None:
-            raise ValueError(
-                f"DQF config '{path}' must declare 'mode: CERTIFICATION|DIAGNOSTIC'"
-            )
+            raise ValueError(f"DQF config '{path}' must declare 'mode: CERTIFICATION|DIAGNOSTIC'")
         try:
             data["mode"] = DQFMode(mode_str)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Invalid mode '{mode_str}' in '{path}'. "
                 f"Accepted values: CERTIFICATION, DIAGNOSTIC"
-            )
+            ) from err
 
         return cls(**data)
 

@@ -43,7 +43,7 @@ _VITALITY_THRESHOLDS = [
     (85, "EXCELLENT"),
     (60, "GOOD"),
     (35, "DEGRADED"),
-    (0,  "CRITICAL"),
+    (0, "CRITICAL"),
 ]
 
 
@@ -128,12 +128,9 @@ class PRODEnvelope:
         Any change to DQF's cleaning algorithm must increment the major
         version, which changes the mif_uid and invalidates prior certs.
         """
-        payload = (
-            self.raw_data_hash
-            + self.dqf_version
-            + self.calendar
-            + self.mode.value
-        ).encode("utf-8")
+        payload = (self.raw_data_hash + self.dqf_version + self.calendar + self.mode.value).encode(
+            "utf-8"
+        )
         return "sha256:" + hashlib.sha256(payload).hexdigest()
 
     def _compute_source_sig(self, mif_uid: str) -> str:

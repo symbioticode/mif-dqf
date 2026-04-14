@@ -11,7 +11,6 @@ import pytest
 
 from dqf.utils.mpi import GRAVITY, InterventionLog, compute_mpi
 
-
 # ---------------------------------------------------------------------------
 # InterventionLog — construction
 # ---------------------------------------------------------------------------

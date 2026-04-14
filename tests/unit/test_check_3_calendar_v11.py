@@ -16,23 +16,22 @@ import pandas as pd
 import pytest
 
 from dqf.checks.check_3_calendar import ACCEPTED_CALENDARS, CalendarAlignmentCheck
-from dqf.core.enums import DQFMode, STATUS_FAIL, STATUS_PASS, STATUS_WARN
-from dqf.utils.mpi import InterventionLog
-
+from dqf.core.enums import STATUS_FAIL, STATUS_PASS, STATUS_WARN, DQFMode
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_nyse_df(periods: int = 10, tz: str = "UTC") -> pd.DataFrame:
     """Weekday-only data aligned with NYSE (no weekends)."""
     dates = pd.bdate_range("2024-01-02", periods=periods, freq="B", tz=tz)
     return pd.DataFrame(
         {
-            "open":   [100.0 + i for i in range(len(dates))],
-            "high":   [105.0 + i for i in range(len(dates))],
-            "low":    [95.0  + i for i in range(len(dates))],
-            "close":  [102.0 + i for i in range(len(dates))],
+            "open": [100.0 + i for i in range(len(dates))],
+            "high": [105.0 + i for i in range(len(dates))],
+            "low": [95.0 + i for i in range(len(dates))],
+            "close": [102.0 + i for i in range(len(dates))],
             "volume": [1_000_000] * len(dates),
         },
         index=dates,
@@ -44,10 +43,10 @@ def _make_df_with_weekends(periods: int = 14, tz: str = "UTC") -> pd.DataFrame:
     dates = pd.date_range("2024-01-01", periods=periods, freq="D", tz=tz)
     return pd.DataFrame(
         {
-            "open":   [100.0 + i for i in range(len(dates))],
-            "high":   [105.0 + i for i in range(len(dates))],
-            "low":    [95.0  + i for i in range(len(dates))],
-            "close":  [102.0 + i for i in range(len(dates))],
+            "open": [100.0 + i for i in range(len(dates))],
+            "high": [105.0 + i for i in range(len(dates))],
+            "low": [95.0 + i for i in range(len(dates))],
+            "close": [102.0 + i for i in range(len(dates))],
             "volume": [1_000_000] * len(dates),
         },
         index=dates,
@@ -57,6 +56,7 @@ def _make_df_with_weekends(periods: int = 14, tz: str = "UTC") -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # CERTIFICATION mode — calendar required
 # ---------------------------------------------------------------------------
+
 
 class TestCertificationMode:
     def test_missing_calendar_returns_fail(self):
@@ -134,6 +134,7 @@ class TestCertificationMode:
 # DIAGNOSTIC mode — auto-detection permitted
 # ---------------------------------------------------------------------------
 
+
 class TestDiagnosticMode:
     def test_no_calendar_auto_detects(self):
         """DIAGNOSTIC + no calendar → auto-detect, result not FAIL."""
@@ -180,6 +181,7 @@ class TestDiagnosticMode:
 # ---------------------------------------------------------------------------
 # Interventions
 # ---------------------------------------------------------------------------
+
 
 class TestCalendarInterventions:
     def test_clean_nyse_data_zero_removals(self):
@@ -229,6 +231,7 @@ class TestCalendarInterventions:
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------
+
 
 class TestCalendarErrorPaths:
     def test_missing_datetime_index_raises_error(self):

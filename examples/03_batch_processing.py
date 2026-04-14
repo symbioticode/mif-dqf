@@ -20,10 +20,10 @@ import pandas as pd
 
 from dqf import DQFConfig, DQFMode, DQFValidator
 
-
 # ---------------------------------------------------------------------------
 # Synthetic data factory
 # ---------------------------------------------------------------------------
+
 
 def create_sample_datasets() -> dict[str, pd.DataFrame]:
     """Create sample datasets for several symbols."""
@@ -36,8 +36,8 @@ def create_sample_datasets() -> dict[str, pd.DataFrame]:
         base_prices = {
             "BTC-USD": 45_000.0,
             "ETH-USD": 2_500.0,
-            "SPY":     450.0,
-            "GLD":     180.0,
+            "SPY": 450.0,
+            "GLD": 180.0,
             "EUR-USD": 1.08,
         }
         base = base_prices[symbol]
@@ -50,10 +50,10 @@ def create_sample_datasets() -> dict[str, pd.DataFrame]:
         n = len(dates)
         data = pd.DataFrame(
             {
-                "open":   [base + i * 0.1 for i in range(n)],
-                "high":   [base * 1.01 + i * 0.1 for i in range(n)],
-                "low":    [base * 0.99 + i * 0.1 for i in range(n)],
-                "close":  [base + i * 0.1 for i in range(n)],
+                "open": [base + i * 0.1 for i in range(n)],
+                "high": [base * 1.01 + i * 0.1 for i in range(n)],
+                "low": [base * 0.99 + i * 0.1 for i in range(n)],
+                "close": [base + i * 0.1 for i in range(n)],
                 "volume": [1_000_000 + i * 1_000 for i in range(n)],
             },
             index=dates,
@@ -79,8 +79,8 @@ def create_sample_datasets() -> dict[str, pd.DataFrame]:
 CALENDAR_MAP = {
     "BTC-USD": "CRYPTO_247",
     "ETH-USD": "CRYPTO_247",
-    "SPY":     "NYSE",
-    "GLD":     "NYSE",
+    "SPY": "NYSE",
+    "GLD": "NYSE",
     "EUR-USD": "FOREX_245",
 }
 
@@ -122,6 +122,7 @@ def batch_validate(
 # Summary helpers
 # ---------------------------------------------------------------------------
 
+
 def print_summary(results: dict[str, object]) -> None:
     """Print aggregate summary."""
     print("=" * 70)
@@ -129,9 +130,9 @@ def print_summary(results: dict[str, object]) -> None:
     print("=" * 70)
 
     certified = [s for s, r in results.items() if r and r.is_certified]
-    warned    = [s for s, r in results.items() if r and r.overall_status == "WARNING"]
-    voided    = [s for s, r in results.items() if r and r.overall_status == "VOID"]
-    errors    = [s for s, r in results.items() if r is None]
+    warned = [s for s, r in results.items() if r and r.overall_status == "WARNING"]
+    voided = [s for s, r in results.items() if r and r.overall_status == "VOID"]
+    errors = [s for s, r in results.items() if r is None]
 
     print(f"  Total     : {len(results)}")
     print(f"  CERTIFIED : {len(certified)}  {certified}")
@@ -141,8 +142,9 @@ def print_summary(results: dict[str, object]) -> None:
     print()
 
     if certified:
-        avg_mpi = sum(r.purity_index for s, r in results.items()
-                      if r and r.is_certified) / len(certified)
+        avg_mpi = sum(r.purity_index for s, r in results.items() if r and r.is_certified) / len(
+            certified
+        )
         print(f"  Avg MPI (certified) : {avg_mpi:.1f}/100")
     print()
 
@@ -181,16 +183,19 @@ def create_consolidated_csv(results: dict[str, object], output_path: Path) -> No
     rows = []
     for symbol, report in results.items():
         if report is None:
-            rows.append({"symbol": symbol, "status": "ERROR",
-                         "mpi": 0.0, "gate": 0.0, "mif_uid": ""})
+            rows.append(
+                {"symbol": symbol, "status": "ERROR", "mpi": 0.0, "gate": 0.0, "mif_uid": ""}
+            )
         else:
-            rows.append({
-                "symbol":  symbol,
-                "status":  report.overall_status,
-                "mpi":     report.purity_index,
-                "gate":    report.precondition_gate,
-                "mif_uid": report.mif_uid,
-            })
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "status": report.overall_status,
+                    "mpi": report.purity_index,
+                    "gate": report.precondition_gate,
+                    "mif_uid": report.mif_uid,
+                }
+            )
     pd.DataFrame(rows).to_csv(output_path, index=False)
     print(f"Consolidated CSV : {output_path}")
     print()
@@ -200,6 +205,7 @@ def create_consolidated_csv(results: dict[str, object], output_path: Path) -> No
 # Main examples
 # ---------------------------------------------------------------------------
 
+
 def example_basic_batch():
     """Basic batch in DIAGNOSTIC mode."""
     print("=" * 70)
@@ -208,7 +214,7 @@ def example_basic_batch():
     print()
 
     datasets = create_sample_datasets()
-    config   = DQFConfig(mode=DQFMode.DIAGNOSTIC)
+    config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
 
     results = batch_validate(datasets, config, mode_label="DIAGNOSTIC")
     print_summary(results)
@@ -227,10 +233,10 @@ def example_strict_batch():
     print()
 
     datasets = create_sample_datasets()
-    config   = DQFConfig(
+    config = DQFConfig(
         mode=DQFMode.CERTIFICATION,
-        c4_warn_threshold=1,        # warn after 1 consecutive repeat
-        c4_max_consecutive_ffill=2, # fail after 2
+        c4_warn_threshold=1,  # warn after 1 consecutive repeat
+        c4_max_consecutive_ffill=2,  # fail after 2
     )
 
     results = batch_validate(datasets, config, mode_label="CERTIFICATION")
@@ -261,7 +267,9 @@ def main():
     print("Key takeaways:")
     print("  - DIAGNOSTIC mode: runs all checks, no calendar required")
     print("  - CERTIFICATION mode: calendar required, VOID if CORE check fails")
-    print("  - report.purity_index (0-100) and report.precondition_gate replace checks_passed/total")
+    print(
+        "  - report.purity_index (0-100) and report.precondition_gate replace checks_passed/total"
+    )
     print("  - report.is_certified is the primary pass/fail signal")
     print()
 

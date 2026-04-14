@@ -6,7 +6,7 @@ Defines abstract base class and result types for all validation checks.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -65,7 +65,7 @@ class CheckResult:
     issues: list[CheckIssue] = field(default_factory=list)
     details: dict[str, Any] | None = None
     severity: str = "INFO"
-    interventions: Optional[InterventionLog] = None
+    interventions: InterventionLog | None = None
 
     def __post_init__(self):
         """Validate result after initialization."""
