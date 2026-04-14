@@ -36,7 +36,7 @@ Ce format `.mif.json` devient l'artefact officiel de sortie du Layer 0.
   "status": {
     "overall": "CERTIFIED",
     "precondition_gate": 1.0,
-    "purity_index": 0.95
+    "purity_index": 95.0
   },
   "checks": {
     "core": {
@@ -130,11 +130,11 @@ Conformément à l'esprit de **D-SIG** et aux formats définis dans la stratégi
   "status": {
     "overall": "CERTIFIED",
     "precondition_gate": 1.0,
-    "purity_index": 0.95
+    "purity_index": 95.0
   },
   "vitality_signal": {
     "score": 100,
-    "label": "TRUSTED",
+    "label": "EXCELLENT",
     "trend": "STABLE"
   },
   "provenance": {
