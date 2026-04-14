@@ -19,7 +19,6 @@ Design constraints (spec §3):
 
 import hashlib
 import logging
-from typing import Optional
 
 import pandas as pd
 
@@ -77,9 +76,7 @@ class DQFValidator:
             TypeError: If ``config`` is not a DQFConfig instance.
         """
         if not isinstance(config, DQFConfig):
-            raise TypeError(
-                f"config must be a DQFConfig instance, got {type(config).__name__!r}"
-            )
+            raise TypeError(f"config must be a DQFConfig instance, got {type(config).__name__!r}")
         self.config = config
         self._init_checks()
         logger.info(
@@ -100,6 +97,7 @@ class DQFValidator:
         # C1: ADVISORY, active only when DAL is connected (Phase 2+)
         if self.config.c1_enabled:
             from dqf.checks.check_1_source import SourceUniquenessCheck
+
             self._checks["C1"] = SourceUniquenessCheck()
 
     # ------------------------------------------------------------------
@@ -109,8 +107,8 @@ class DQFValidator:
     def validate(
         self,
         df: pd.DataFrame,
-        calendar: Optional[str] = None,
-        raw_data_hash: Optional[str] = None,
+        calendar: str | None = None,
+        raw_data_hash: str | None = None,
     ) -> DQFReport:
         """
         Run the full DQF validation pipeline.
@@ -132,9 +130,7 @@ class DQFValidator:
             TypeError: If ``df`` is not a pandas DataFrame.
         """
         if not isinstance(df, pd.DataFrame):
-            raise TypeError(
-                f"df must be a pandas DataFrame, got {type(df).__name__!r}"
-            )
+            raise TypeError(f"df must be a pandas DataFrame, got {type(df).__name__!r}")
 
         if raw_data_hash is None:
             raw_data_hash = self._hash_dataframe(df)

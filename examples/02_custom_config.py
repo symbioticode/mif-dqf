@@ -22,10 +22,10 @@ def create_sample_data(weekdays_only: bool = True) -> pd.DataFrame:
     n = len(dates)
     return pd.DataFrame(
         {
-            "open":   [100.0 + i * 0.5 for i in range(n)],
-            "high":   [105.0 + i * 0.5 for i in range(n)],
-            "low":    [95.0 + i * 0.5 for i in range(n)],
-            "close":  [102.0 + i * 0.5 for i in range(n)],
+            "open": [100.0 + i * 0.5 for i in range(n)],
+            "high": [105.0 + i * 0.5 for i in range(n)],
+            "low": [95.0 + i * 0.5 for i in range(n)],
+            "close": [102.0 + i * 0.5 for i in range(n)],
             "volume": [1_000_000 + i * 10_000 for i in range(n)],
         },
         index=dates,
@@ -120,8 +120,9 @@ def example_4_from_yaml():
     print("Example 4: Load Config from YAML")
     print("=" * 70)
 
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     config_dict = {
         "mode": "CERTIFICATION",

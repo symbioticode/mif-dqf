@@ -35,10 +35,10 @@ from dqf.core.enums import (
 from dqf.core.report import DQFReport
 from dqf.core.validator import DQFValidator
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def cert_config():
@@ -56,10 +56,10 @@ def clean_nyse_df():
     dates = pd.bdate_range("2024-01-02", periods=20, freq="B", tz="UTC")
     return pd.DataFrame(
         {
-            "open":   [100.0 + i for i in range(len(dates))],
-            "high":   [105.0 + i for i in range(len(dates))],
-            "low":    [95.0  + i for i in range(len(dates))],
-            "close":  [102.0 + i for i in range(len(dates))],
+            "open": [100.0 + i for i in range(len(dates))],
+            "high": [105.0 + i for i in range(len(dates))],
+            "low": [95.0 + i for i in range(len(dates))],
+            "close": [102.0 + i for i in range(len(dates))],
             "volume": [1_000_000] * len(dates),
         },
         index=dates,
@@ -72,10 +72,10 @@ def df_with_integrity_violation():
     dates = pd.bdate_range("2024-01-02", periods=10, freq="B", tz="UTC")
     df = pd.DataFrame(
         {
-            "open":   [100.0] * 10,
-            "high":   [90.0] + [105.0] * 9,   # row 0: high < low
-            "low":    [95.0] * 10,
-            "close":  [102.0] * 10,
+            "open": [100.0] * 10,
+            "high": [90.0] + [105.0] * 9,  # row 0: high < low
+            "low": [95.0] * 10,
+            "close": [102.0] * 10,
             "volume": [1_000_000] * 10,
         },
         index=dates,
@@ -87,15 +87,29 @@ def df_with_integrity_violation():
 def df_with_ffill():
     """Data with 4 consecutive identical close values — C4 ADVISORY WARN."""
     dates = pd.bdate_range("2024-01-02", periods=15, freq="B", tz="UTC")
-    close = [100.0, 101.0, 102.0, 103.0, 104.0,
-             104.0, 104.0, 104.0, 104.0,          # 5 identical → 4 ffills
-             105.0, 106.0, 107.0, 108.0, 109.0, 110.0]
+    close = [
+        100.0,
+        101.0,
+        102.0,
+        103.0,
+        104.0,
+        104.0,
+        104.0,
+        104.0,
+        104.0,  # 5 identical → 4 ffills
+        105.0,
+        106.0,
+        107.0,
+        108.0,
+        109.0,
+        110.0,
+    ]
     return pd.DataFrame(
         {
-            "open":   [c - 1 for c in close],
-            "high":   [c + 2 for c in close],
-            "low":    [c - 2 for c in close],
-            "close":  close,
+            "open": [c - 1 for c in close],
+            "high": [c + 2 for c in close],
+            "low": [c - 2 for c in close],
+            "close": close,
             "volume": [1_000_000] * 15,
         },
         index=dates,
@@ -105,6 +119,7 @@ def df_with_ffill():
 # ---------------------------------------------------------------------------
 # CERTIFICATION mode
 # ---------------------------------------------------------------------------
+
 
 class TestCertificationMode:
     def test_clean_data_certified(self, cert_config, clean_nyse_df):
@@ -176,6 +191,7 @@ class TestCertificationMode:
 # DIAGNOSTIC mode
 # ---------------------------------------------------------------------------
 
+
 class TestDiagnosticMode:
     def test_no_calendar_does_not_void(self, diag_config, clean_nyse_df):
         """DIAGNOSTIC + no calendar → auto-detect, result is not VOID."""
@@ -204,12 +220,21 @@ class TestDiagnosticMode:
 # Manifest structure
 # ---------------------------------------------------------------------------
 
+
 class TestManifestStructure:
     def test_required_top_level_keys(self, cert_config, clean_nyse_df):
         validator = DQFValidator(cert_config)
         report = validator.validate(clean_nyse_df, calendar="NYSE")
-        required = {"@context", "@type", "mif_uid", "status", "checks",
-                    "vitality_signal", "provenance", "signature"}
+        required = {
+            "@context",
+            "@type",
+            "mif_uid",
+            "status",
+            "checks",
+            "vitality_signal",
+            "provenance",
+            "signature",
+        }
         assert required.issubset(report.manifest.keys())
 
     def test_mif_uid_starts_with_sha256(self, cert_config, clean_nyse_df):
@@ -240,6 +265,7 @@ class TestManifestStructure:
 # ---------------------------------------------------------------------------
 # DQFReport properties and serialisation
 # ---------------------------------------------------------------------------
+
 
 class TestReportProperties:
     def test_to_json_returns_valid_json(self, cert_config, clean_nyse_df):
@@ -278,6 +304,7 @@ class TestReportProperties:
 # DQFValidator type safety and determinism
 # ---------------------------------------------------------------------------
 
+
 class TestValidatorContract:
     def test_wrong_config_type_raises(self):
         with pytest.raises(TypeError, match="DQFConfig"):
@@ -301,7 +328,7 @@ class TestValidatorContract:
         """Calendar is part of MIF-UID — different calendars → different UIDs."""
         v = DQFValidator(cert_config)
         uid_nyse = v.validate(clean_nyse_df, calendar="NYSE").mif_uid
-        uid_lse  = v.validate(clean_nyse_df, calendar="LSE").mif_uid
+        uid_lse = v.validate(clean_nyse_df, calendar="LSE").mif_uid
 
         assert uid_nyse != uid_lse
 

@@ -23,9 +23,8 @@ from dqf.core.enums import (
     STATUS_WARNING,
     DQFMode,
 )
-from dqf.core.prod_envelope import PRODEnvelope, _vitality_label, _mpi_to_vitality_score
+from dqf.core.prod_envelope import PRODEnvelope, _mpi_to_vitality_score, _vitality_label
 from dqf.utils.mpi import InterventionLog
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -61,6 +60,7 @@ def _make_envelope(
 # ---------------------------------------------------------------------------
 # _compute_overall_status
 # ---------------------------------------------------------------------------
+
 
 class TestOverallStatus:
     def test_all_pass_returns_certified(self):
@@ -98,11 +98,20 @@ class TestOverallStatus:
 # build() — manifest structure
 # ---------------------------------------------------------------------------
 
+
 class TestManifestStructure:
     def test_top_level_keys(self):
         manifest = _make_envelope().build()
-        required = {"@context", "@type", "mif_uid", "status", "checks",
-                    "vitality_signal", "provenance", "signature"}
+        required = {
+            "@context",
+            "@type",
+            "mif_uid",
+            "status",
+            "checks",
+            "vitality_signal",
+            "provenance",
+            "signature",
+        }
         assert required.issubset(manifest.keys())
 
     def test_context_and_type(self):
@@ -142,6 +151,7 @@ class TestManifestStructure:
 # Invariants (spec §3–§7)
 # ---------------------------------------------------------------------------
 
+
 class TestInvariants:
     def test_sig_type_always_sha256_provisional(self):
         for mode in (DQFMode.CERTIFICATION, DQFMode.DIAGNOSTIC):
@@ -176,6 +186,7 @@ class TestInvariants:
 # ---------------------------------------------------------------------------
 # precondition_gate (spec §7)
 # ---------------------------------------------------------------------------
+
 
 class TestPreconditionGate:
     def test_certified_gate_is_1(self):
@@ -212,6 +223,7 @@ class TestPreconditionGate:
 # MIF-UID
 # ---------------------------------------------------------------------------
 
+
 class TestMifUid:
     def test_mif_uid_starts_with_sha256(self):
         manifest = _make_envelope().build()
@@ -247,6 +259,7 @@ class TestMifUid:
 # to_json()
 # ---------------------------------------------------------------------------
 
+
 class TestToJson:
     def test_returns_valid_json(self):
         result = _make_envelope().to_json()
@@ -269,17 +282,21 @@ class TestToJson:
 # Vitality helpers
 # ---------------------------------------------------------------------------
 
+
 class TestVitalityHelpers:
-    @pytest.mark.parametrize("score,expected", [
-        (100, "EXCELLENT"),
-        (85,  "EXCELLENT"),
-        (84,  "GOOD"),
-        (60,  "GOOD"),
-        (59,  "DEGRADED"),
-        (35,  "DEGRADED"),
-        (34,  "CRITICAL"),
-        (0,   "CRITICAL"),
-    ])
+    @pytest.mark.parametrize(
+        "score,expected",
+        [
+            (100, "EXCELLENT"),
+            (85, "EXCELLENT"),
+            (84, "GOOD"),
+            (60, "GOOD"),
+            (59, "DEGRADED"),
+            (35, "DEGRADED"),
+            (34, "CRITICAL"),
+            (0, "CRITICAL"),
+        ],
+    )
     def test_vitality_label_thresholds(self, score, expected):
         assert _vitality_label(score) == expected
 
@@ -288,6 +305,7 @@ class TestVitalityHelpers:
 
     def test_fail_status_vitality_score_is_10(self):
         from dqf.core.enums import STATUS_FAIL
+
         assert _mpi_to_vitality_score(95.0, STATUS_FAIL) == 10
 
     def test_certified_vitality_score_equals_int_mpi(self):

@@ -24,10 +24,10 @@ def create_btc_data(periods: int = 60) -> pd.DataFrame:
     dates = pd.date_range("2024-01-01", periods=periods, freq="D", tz="UTC")
     return pd.DataFrame(
         {
-            "open":   [45_000 + i * 10 for i in range(len(dates))],
-            "high":   [45_500 + i * 10 for i in range(len(dates))],
-            "low":    [44_500 + i * 10 for i in range(len(dates))],
-            "close":  [45_200 + i * 10 for i in range(len(dates))],
+            "open": [45_000 + i * 10 for i in range(len(dates))],
+            "high": [45_500 + i * 10 for i in range(len(dates))],
+            "low": [44_500 + i * 10 for i in range(len(dates))],
+            "close": [45_200 + i * 10 for i in range(len(dates))],
             "volume": [1_000_000 + i * 1_000 for i in range(len(dates))],
         },
         index=dates,
@@ -39,10 +39,10 @@ def create_spy_data(periods: int = 40) -> pd.DataFrame:
     dates = pd.bdate_range("2024-01-02", periods=periods, freq="B", tz="UTC")
     return pd.DataFrame(
         {
-            "open":   [450.0 + i * 0.5 for i in range(len(dates))],
-            "high":   [455.0 + i * 0.5 for i in range(len(dates))],
-            "low":    [445.0 + i * 0.5 for i in range(len(dates))],
-            "close":  [452.0 + i * 0.5 for i in range(len(dates))],
+            "open": [450.0 + i * 0.5 for i in range(len(dates))],
+            "high": [455.0 + i * 0.5 for i in range(len(dates))],
+            "low": [445.0 + i * 0.5 for i in range(len(dates))],
+            "close": [452.0 + i * 0.5 for i in range(len(dates))],
             "volume": [50_000_000] * len(dates),
         },
         index=dates,

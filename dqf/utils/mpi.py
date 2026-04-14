@@ -18,11 +18,10 @@ N_total_points = DataFrame.shape[0] × 5  (rows × OHLCV columns)
 
 from dataclasses import dataclass
 
-
 GRAVITY: dict[str, float] = {
     "physical_correction": 1.0,
-    "forward_fill":        0.5,
-    "calendar_removal":    0.2,
+    "forward_fill": 0.5,
+    "calendar_removal": 0.2,
 }
 
 VALID_INTERVENTION_TYPES = frozenset(GRAVITY.keys())
@@ -62,9 +61,7 @@ class InterventionLog:
             ValueError: If ``intervention_type`` is unknown or ``count`` < 0.
         """
         if count < 0:
-            raise ValueError(
-                f"Intervention count must be >= 0, got {count}"
-            )
+            raise ValueError(f"Intervention count must be >= 0, got {count}")
         if intervention_type == "physical_correction":
             self.physical_corrections += count
         elif intervention_type == "forward_fill":
@@ -85,8 +82,8 @@ class InterventionLog:
         """
         return (
             self.physical_corrections * GRAVITY["physical_correction"]
-            + self.forward_fills      * GRAVITY["forward_fill"]
-            + self.calendar_removals  * GRAVITY["calendar_removal"]
+            + self.forward_fills * GRAVITY["forward_fill"]
+            + self.calendar_removals * GRAVITY["calendar_removal"]
         )
 
     def total_count(self) -> int:
@@ -143,9 +140,7 @@ def compute_mpi(log: InterventionLog, n_total_points: int) -> float:
         99.8
     """
     if n_total_points <= 0:
-        raise ValueError(
-            f"n_total_points must be > 0, got {n_total_points}"
-        )
+        raise ValueError(f"n_total_points must be > 0, got {n_total_points}")
 
     weighted = log.total_weighted()
     raw = 100.0 * (1.0 - weighted / n_total_points)
