@@ -3,8 +3,8 @@ requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dqf"
-version = "1.0.0"
+name = "mif-dqf"
+version = "1.1.0"
 description = "Production-ready validation framework for OHLCV financial data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,9 @@ keywords = [
     "trading",
     "quantitative-finance",
     "data-integrity",
-    "provenance-tracking"
+    "provenance-tracking",
+    "mif",
+    "dqf"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
