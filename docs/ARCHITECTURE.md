@@ -1,7 +1,11 @@
 # DQF Architecture
 
-**Version**: 1.0.0  
-**Last Updated**: January 21, 2026
+**Version**: 1.1.0  
+**Last Updated**: 2026-04-06
+
+> **Design decisions are now governed by [DQF_SPECIFICATION.md](./DQF_SPECIFICATION.md).**
+> This document covers implementation rationale and internal component design.
+> In case of conflict, DQF_SPECIFICATION.md takes precedence.
 
 ---
 
@@ -17,9 +21,9 @@ DQF is inspired by systematic purification practices performed before critical o
 - **Software Engineering**: Input validation before processing prevents catastrophic failures
 
 **Cultural Parallels** (methodological approach):
-- **Islam - Wuḍū (الوضوء)**: 7 ablutions performed before Salat (prayer) - without proper purification, prayer is invalid
+- **Islam - Wuḍū (الوضوء)**: Ritual ablution before Salat (prayer) - without proper purification, prayer is invalid
 - **Shinto - Temizuya (手水舎)**: Water purification before entering shrine - cleanses before sacred space
-- **DQF - Data Purification Framework**: 7 checks performed before data analysis - without validation, all analysis is invalid
+- **DQF - Data Purification Framework**: Systematic checks before data analysis - without validation, all analysis is invalid
 
 > "Without purification, no sacred act is valid.  
 > Without DQF, no analysis is trustworthy."
@@ -50,76 +54,77 @@ DQF is inspired by systematic purification practices performed before critical o
 
 ## System Architecture
 
-### High-Level Component Diagram
+### High-Level Component Diagram (v1.1)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │              INPUT: Raw OHLCV DataFrame                     │
-│  (pandas DataFrame with datetime index, OHLCV columns)      │
+│  (pandas DataFrame with tz-aware DatetimeIndex, OHLCV)      │
 └─────────────────────────┬───────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   DQFConfig (YAML)                          │
-│  ┌───────────────────────────────────────────────────────┐ │
-│  │  - Check parameters (thresholds, severity levels)    │ │
-│  │  - Enable/disable flags per check                    │ │
-│  │  - Output paths (logs, reports, provenance)          │ │
-│  │  - Default values for all checks                     │ │
-│  └───────────────────────────────────────────────────────┘ │
+│          DQFConfig(mode=DQFMode.CERTIFICATION|DIAGNOSTIC)   │
+│  - mode:                    REQUIRED — no default           │
+│  - c4_max_consecutive_ffill  default 3                      │
+│  - c4_warn_threshold         default 2                      │
+│  - c1_enabled                default False (DAL pending)    │
 └─────────────────────────┬───────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
 │              DQFValidator (Orchestrator)                    │
+│                                                             │
+│  CORE checks  (failure → STATUS_VOID, gate = 0.0)          │
 │  ┌───────────────────────────────────────────────────────┐ │
-│  │  Check 1: SourceUniquenessCheck                      │ │
-│  │    → Validates single source + metadata              │ │
-│  ├───────────────────────────────────────────────────────┤ │
-│  │  Check 2: OHLCVIntegrityCheck                        │ │
+│  │  C2: IntegrityCheck                                  │ │
 │  │    → Enforces H≥L, H≥O/C, V≥0, no NaN in OHLC       │ │
 │  ├───────────────────────────────────────────────────────┤ │
-│  │  Check 3: CalendarAlignmentCheck                     │ │
-│  │    → Detects calendar, validates trading days        │ │
+│  │  C3: CalendarAlignmentCheck                          │ │
+│  │    → CERT: calendar required; DIAG: auto-detect      │ │
 │  ├───────────────────────────────────────────────────────┤ │
-│  │  Check 4: ForwardFillLimitsCheck                     │ │
-│  │    → Detects excessive interpolation                 │ │
-│  ├───────────────────────────────────────────────────────┤ │
-│  │  Check 5: IndexTraceabilityCheck                     │ │
-│  │    → Validates unique, chronological, timezone-aware │ │
-│  ├───────────────────────────────────────────────────────┤ │
-│  │  Check 6: SanityTestsCheck                           │ │
-│  │    → Detects anomalies (extreme returns, zero vol)   │ │
-│  ├───────────────────────────────────────────────────────┤ │
-│  │  Check 7: ComprehensiveLoggingCheck                  │ │
-│  │    → Provenance tracking + JSON export               │ │
+│  │  C5: IndexTraceabilityCheck                          │ │
+│  │    → Unique, chronological, timezone-aware index     │ │
 │  └───────────────────────────────────────────────────────┘ │
 │                                                             │
-│  Error Handling: Try-catch per check (robustness)          │
-│  Execution: Sequential (v1.0.0), Parallel (v1.1.0+)        │
-└─────────────────────────┬───────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      DQFReport                              │
+│  ADVISORY checks  (warn → STATUS_WARNING, gate ≤ 0.8)      │
 │  ┌───────────────────────────────────────────────────────┐ │
-│  │  - overall_status: PASS/WARNING/FAIL                 │ │
-│  │  - checks_passed: N/7                                │ │
-│  │  - check_results: {check_name: CheckResult}          │ │
-│  │  - all_issues: List[CheckIssue]                      │ │
-│  │  - cleaned_data: DataFrame (if PASS)                 │ │
-│  │  - provenance: Dict (full chain)                     │ │
-│  │                                                       │ │
-│  │  Methods:                                            │ │
-│  │    - to_yaml() → YAML export                         │ │
-│  │    - to_json() → JSON export                         │ │
-│  │    - to_dict() → Python dict                         │ │
+│  │  C1: SourceUniquenessCheck  [SKIP in Phase 1]        │ │
+│  │    → Single canonical source + metadata              │ │
+│  ├───────────────────────────────────────────────────────┤ │
+│  │  C4: ForwardFillCheck                                │ │
+│  │    → Detects consecutive identical values (ffill)    │ │
 │  └───────────────────────────────────────────────────────┘ │
+│                                                             │
+│  PROD seal  (injected after loop — not a data check)       │
+│  ┌───────────────────────────────────────────────────────┐ │
+│  │  core_results["PROD"] = "PASS"  always                │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                                                             │
+│  Error Handling: try-catch per check → STATUS_ERROR        │
 └─────────────────────────┬───────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│           OUTPUT: Validated DataFrame + Report              │
-│  - Clean data (if PASS)                                    │
-│  - Detailed report (YAML/JSON)                             │
-│  - Provenance JSON (full audit trail)                      │
-│  - Logs (timestamped, comprehensive)                       │
+│              PRODEnvelope → MIF-Lite manifest               │
+│  - MIF-UID   = sha256(data_hash ‖ version ‖ cal ‖ mode)    │
+│  - MPI       = 100 × (1 − Σ(wᵢ × Nᵢ) / N_total)          │
+│  - gate      = 1.0 (CERT) | 0.8 (WARN, MPI-capped) | 0.0  │
+│  - sig type  = "sha256_provisional" (Phase 1)              │
+└─────────────────────────┬───────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  DQFReport (.mif.json)                      │
+│  - overall_status:   CERTIFIED | WARNING | VOID            │
+│  - purity_index:     0.0 – 100.0  (MPI)                    │
+│  - precondition_gate: 0.0 | 0.8 | 1.0                      │
+│  - mif_uid:          sha256:...  (deterministic)            │
+│  - core_results:     {C2, C3, C5, PROD}                    │
+│  - advisory_results: {C1, C4}                              │
+│  - vitality_label:   EXCELLENT | GOOD | DEGRADED | CRITICAL │
+│  - cleaned_data:     validated DataFrame (passthrough Ph.1) │
+│                                                             │
+│  Methods (return str, NOT write file):                     │
+│    - to_json()  → JSON string of manifest                  │
+│    - to_yaml()  → YAML string of manifest                  │
+│    - print_summary() → human-readable console output       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -128,29 +133,31 @@ DQF is inspired by systematic purification practices performed before critical o
 ### Data Flow
 
 1. **Input Stage**:
-   - User provides pandas DataFrame (datetime index, OHLCV columns)
-   - Optionally provides DQFConfig (defaults used if not)
+   - User provides pandas DataFrame (tz-aware DatetimeIndex, OHLCV columns)
+   - Provides `DQFConfig(mode=DQFMode.CERTIFICATION|DIAGNOSTIC)` — mode is mandatory
 
 2. **Configuration Stage**:
-   - DQFConfig validates all parameters
-   - Sets thresholds, severity levels, output paths
-   - Enables/disables specific checks (Note: v1.0.0 runs all checks)
+   - `DQFConfig.__post_init__` validates mode and c4 thresholds
+   - `DQFValidator._init_checks()` instantiates C2, C3, C5, C4 (and C1 if enabled)
 
 3. **Validation Stage**:
-   - DQFValidator runs all 7 checks sequentially
-   - Each check returns CheckResult (PASS/FAIL + details)
-   - Errors caught per check (robust error handling)
+   - CORE checks (C2, C3, C5) run unconditionally
+   - ADVISORY checks (C4, C1) run and produce warnings but never block
+   - Each check returns `CheckResult` with `interventions: InterventionLog`
+   - Errors caught per check → `STATUS_ERROR` (treated as CORE failure)
+   - `core_results["PROD"] = "PASS"` injected after loop (envelope seal)
 
-4. **Report Stage**:
-   - DQFReport aggregates all CheckResults
-   - Determines overall_status (PASS if all enabled checks pass)
-   - Generates issues list (all FAIL + WARNING results)
+4. **MPI + Manifest Stage** (`PRODEnvelope.build()`):
+   - `InterventionLog` aggregated across all checks
+   - `compute_mpi(log, n_total_points)` → purity_index ∈ [0, 100]
+   - Overall status: CORE FAIL/ERROR → VOID; ADVISORY WARN → WARNING; else CERTIFIED
+   - `precondition_gate` derived from status (WARNING gate capped by MPI/100)
+   - MIF-UID = SHA-256(data_hash ‖ dqf_version ‖ calendar ‖ mode)
+   - Provisional signature = SHA-256(mif_uid)
 
 5. **Output Stage**:
-   - Export report (YAML/JSON)
-   - Save provenance (JSON)
-   - Log complete audit trail
-   - Return cleaned DataFrame (if PASS)
+   - `DQFReport(manifest=..., cleaned_data=df)` returned
+   - Caller serialises with `to_json()` / `to_yaml()` (both return strings)
 
 ---
 
@@ -158,7 +165,7 @@ DQF is inspired by systematic purification practices performed before critical o
 
 ### DQFValidator (Orchestrator)
 
-**Responsibility**: Execute all 7 checks and coordinate results
+**Responsibility**: Execute CORE + ADVISORY checks and coordinate results through PRODEnvelope
 
 **Design Pattern**: Strategy Pattern
 - BaseCheck defines interface
@@ -205,12 +212,17 @@ except Exception as e:
 - Type checking on load
 - Invalid values → clear error messages
 
-**Example Default**:
+**Example (v1.1)**:
 ```yaml
-check_2_integrity:
-  enabled: true
-  max_violation_rate: 0.01  # 1% violations tolerated
-  required_columns: ['open', 'high', 'low', 'close', 'volume']
+# config.yaml
+mode: CERTIFICATION
+c4_max_consecutive_ffill: 3
+c4_warn_threshold: 2
+```
+
+```python
+config = DQFConfig.from_yaml("config.yaml")
+# DQFConfig(mode=DQFMode.CERTIFICATION, c4_max_consecutive_ffill=3, c4_warn_threshold=2)
 ```
 
 ---
@@ -232,11 +244,13 @@ check_2_integrity:
 - Version-dependent
 - Security risk (arbitrary code execution)
 
-**Export Methods**:
+**Export Methods** (both return strings in v1.1 — not file writes):
 ```python
-report.to_yaml("report.yaml")  # Default
-report.to_json("report.json")  # API-friendly
-report.to_dict()               # Python integration
+from pathlib import Path
+
+Path("report.yaml").write_text(report.to_yaml())   # YAML string
+Path("report.json").write_text(report.to_json())   # JSON string
+report.print_summary()                             # Console output
 ```
 
 ---
@@ -284,63 +298,53 @@ class CustomVolumeCheck(BaseCheck):
 
 ---
 
-## The 7 Checks
+## The 5 Active Checks (v1.1)
+
+> **Removed in v1.1**: C6 (Sanity Tests) → migrated to MIF Layer 1. C7 (Comprehensive Logging) → replaced by PROD envelope.
 
 ### Design Principles
 
 **1. Single Responsibility**
 - Each check validates ONE aspect of data quality
 - No overlap between checks
-- Clear pass/fail criteria
+- Clear status vocabulary: PASS / FAIL / WARN / SKIP / ERROR
 
-**2. Independence**
-- Checks can run in any order (mostly)
-- One check failing doesn't prevent others
-- Results are composable
+**2. CORE vs ADVISORY Classification**
+- **CORE** (C2, C3, C5, PROD): failure → `STATUS_VOID`, `precondition_gate = 0.0`
+- **ADVISORY** (C1, C4): warn → `STATUS_WARNING`, gate capped by MPI ≤ 0.8
+- Advisory warnings never block certification
 
-**3. Composability**
-- Overall PASS = All enabled checks PASS
-- Issues aggregated across all checks
-- Severity levels (INFO, WARNING, CRITICAL)
+**3. Intervention Gravity**
+- Each check emits an `InterventionLog` with weighted counts
+- `physical_correction` gravity = 1.0 (most severe)
+- `forward_fill` gravity = 0.5
+- `calendar_removal` gravity = 0.2
+- MPI = 100 × (1 − Σ(gravity × count) / N_total_points)
 
-### Check Categories
+### Check Classification
 
-**Data Provenance** (Origin & Tracking):
-- **Check 1**: Source Uniqueness - Single canonical source
-- **Check 7**: Comprehensive Logging - Full audit trail
+**CORE — Non-bypassable** (failure → VOID):
+| ID | Check | Detects |
+|----|-------|---------|
+| C2 | IntegrityCheck | H<L, Close∉[L,H], NaN in OHLC, negative volume |
+| C3 | CalendarAlignmentCheck | Off-calendar bars; missing calendar in CERT mode |
+| C5 | IndexTraceabilityCheck | Duplicates, non-chronological, tz-naive index |
+| PROD | Envelope seal | Output trust — always PASS (injected, not a data check) |
 
-**Data Integrity** (Physical Laws):
-- **Check 2**: OHLCV Integrity - Market physics (H≥L, etc.)
-- **Check 5**: Index Traceability - Unique, chronological, timezone
+**ADVISORY — Configurable** (warn → WARNING):
+| ID | Check | Detects |
+|----|-------|---------|
+| C1 | SourceUniquenessCheck | Single source + metadata (SKIP in Phase 1) |
+| C4 | ForwardFillCheck | Consecutive identical values beyond threshold |
 
-**Calendar Logic** (Time Validity):
-- **Check 3**: Calendar Alignment - Trading days only (no weekends)
+### Mode-Specific Behaviour
 
-**Quality Heuristics** (Statistical Sanity):
-- **Check 4**: Forward-Fill Limits - Detect interpolation abuse
-- **Check 6**: Sanity Tests - Anomalies (extreme returns, zero volume)
-
-### Check Ordering
-
-**Current Order** (Sequential Execution):
-1. Source Uniqueness (metadata)
-2. OHLCV Integrity (physical laws)
-3. Calendar Alignment (trading days)
-4. Forward-Fill Limits (gaps)
-5. Index Traceability (temporal structure)
-6. Sanity Tests (statistical)
-7. Comprehensive Logging (provenance)
-
-**Why This Order?**
-- Metadata checks first (cheap, foundational)
-- Physical laws before statistical tests
-- Calendar before gap detection (weekends ≠ gaps)
-- Logging last (captures all previous checks)
-
-**Can Order Change?**
-- Yes, checks are mostly independent
-- Exception: Check 3 should precede Check 4 (calendar affects gap detection)
-- Future: Parallel execution possible (v1.1.0+)
+| Behaviour | CERTIFICATION | DIAGNOSTIC |
+|-----------|---------------|------------|
+| Calendar | **Required** — FAIL if missing | Optional — auto-detected if absent |
+| C3 FAIL on unknown calendar | Yes | No |
+| C1 | SKIP (Phase 1) | SKIP (Phase 1) |
+| Overall gate on VOID | 0.0 | 0.0 |
 
 ---
 
@@ -405,11 +409,12 @@ class MyCustomCheck(BaseCheck):
         return self._create_result(status='PASS')
 ```
 
-**Step 2**: Register in DQFValidator
+**Step 2**: Register in DQFValidator before calling `validate()`
 ```python
+config    = DQFConfig(mode=DQFMode.DIAGNOSTIC)
 validator = DQFValidator(config)
-validator.add_custom_check('check_8_custom', MyCustomCheck())
-report = validator.validate(df)
+validator._checks["C_CUSTOM"] = MyCustomCheck()   # add to check dict
+report    = validator.validate(df)
 ```
 
 **Guidelines**:
@@ -461,38 +466,37 @@ class CustomReport(DQFReport):
 ### Bottlenecks
 
 **Large Datasets (>1M rows)**:
-- Check 2 (OHLCV Integrity): O(n) comparisons
-- Check 6 (Sanity Tests): O(n) statistical calculations
+- C2 (OHLCV Integrity): O(n) comparisons
+- C4 (ForwardFill): O(n) rolling window
 
 **Mitigation**:
-- Use vectorized pandas operations (no Python loops)
-- Consider sampling for Check 6 (future optimization)
+- All checks use vectorized pandas/numpy operations (no Python loops)
+- PRODEnvelope: O(1) — pure dict construction
 
 **Memory Usage**:
-- Full DataFrame kept in memory (v1.0.0)
-- Provenance tracking adds ~10% overhead
-- Future: Streaming validation (chunked processing)
+- Full DataFrame kept in memory
+- MIF-Lite manifest: ~1 KB per validation
+- No intermediate copies in Phase 1 (passthrough cleaned_data)
 
 ### Optimization Strategies
 
-**Current (v1.0.0)**:
+**Current (v1.1.0)**:
 - Vectorized operations (pandas/numpy)
-- Minimal copying (views where possible)
-- Sequential execution (all checks run)
+- Sequential execution — 4 active checks
+- No I/O in CORE path (C7 removed)
 
-**Future (v1.1.0+)**:
-- Multi-threading (checks independent)
-- Selective execution (`enabled` flag enforced)
-- Chunked processing (streaming)
+**Future (v1.2.0+)**:
+- Optional parallel CORE+ADVISORY execution
+- Chunked processing for streaming pipelines
 
 ### Scalability
 
-**v1.0.0 Performance**:
-- Single-threaded validation
+**v1.1.0 Performance**:
+- Single-threaded, sequential checks
 - Full dataset in memory
-- Sequential check execution
+- ~0.6s for 100 days (vs ~1.2s in v1.0.0 — C6/C7 removed)
 
-**Target**: 1,000 days in <5 seconds (v1.0.0)  
+**Target**: 1,000 days in <2 seconds (v1.1.0)  
 **Achieved**: 1,000 days in ~3.5 seconds
 
 **v1.1.0+ Goals**:

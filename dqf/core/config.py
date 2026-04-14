@@ -1,229 +1,141 @@
 """
-DQF Configuration Module.
+DQF Configuration Module — v1.1
 
-Defines configuration structure for DQF validation framework.
+DQFConfig requires an explicit operational mode (DQFMode).
+There is no default — callers must declare intent.
 """
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Optional
 
 import yaml
 
+from dqf.core.enums import DQFMode
 
+
+@dataclass
 class DQFConfig:
     """
-    Configuration for DQF validation.
+    Configuration for DQF v1.1 validation.
 
-    Stores settings for all 7 checks and provides methods to load/save
-    configurations from YAML files or dictionaries.
+    The ``mode`` parameter is MANDATORY. There is no default.
+
+    CERTIFICATION : CORE checks are active and non-bypassable. Calendar must
+                    be explicitly declared in the ``validate()`` call.
+    DIAGNOSTIC    : ADVISORY checks are configurable. Calendar auto-detection
+                    is permitted.
+
+    Args:
+        mode: DQFMode.CERTIFICATION or DQFMode.DIAGNOSTIC.
+
+        c4_max_consecutive_ffill: Maximum consecutive forward-filled bars before
+            C4 raises FAIL (default: 3). Recorded as metadata in CERTIFICATION.
+        c4_warn_threshold: Number of consecutive ffill bars that triggers a WARN
+            before hitting the hard limit (default: 2).
+
+        c1_enabled: Whether to run C1 (Stream Integrity). False in Phase 1
+            because DAL is not yet connected. When True, C1 is ADVISORY.
+
+    Examples:
+        >>> config = DQFConfig(mode=DQFMode.CERTIFICATION)
+        >>> config = DQFConfig(mode=DQFMode.DIAGNOSTIC, c4_max_consecutive_ffill=5)
+        >>> config = DQFConfig.from_yaml("dqf_config.yaml")
     """
 
-    def __init__(self, **kwargs) -> None:
-        """
-        Initialize DQF configuration.
+    mode: DQFMode
 
-        Args:
-            **kwargs: Optional check-specific configurations.
-                     Format: check_1_source={'enabled': True, ...}
+    # C4 — Forward-Fill Limits (ADVISORY)
+    c4_max_consecutive_ffill: int = 3
+    c4_warn_threshold: int = 2
 
-        Examples:
-            >>> # Default config (all checks enabled)
-            >>> config = DQFConfig()
+    # C1 — Stream Integrity (ADVISORY, DAL-pending)
+    # Phase 1: always False. Set True once DAL is connected.
+    c1_enabled: bool = False  # DAL-pending
 
-            >>> # Custom config
-            >>> config = DQFConfig(
-            ...     check_2_integrity={'enabled': True, 'max_violation_rate': 0.01}
-            ... )
-
-            >>> # From YAML
-            >>> config = DQFConfig.from_yaml("my_config.yaml")
-        """
-        # Default configuration for all 7 checks
-        self.checks: dict[str, dict[str, Any]] = {
-            "check_1_source": {
-                "enabled": True,
-                "require_metadata": False,
-                "max_gap_days": 30,
-            },
-            "check_2_integrity": {
-                "enabled": True,
-                "max_violation_rate": 0.01,
-                "required_columns": ["open", "high", "low", "close", "volume"],
-            },
-            "check_3_calendar": {
-                "enabled": True,
-                "auto_detect": True,
-                "require_timezone": True,
-            },
-            "check_4_ffill": {
-                "enabled": True,
-                "max_consecutive_ffill": 3,
-                "warn_threshold": 2,
-                "columns_to_check": ["close"],
-            },
-            "check_5_trace": {
-                "enabled": True,
-                "require_unique": True,
-                "require_chronological": True,
-                "require_timezone": True,
-            },
-            "check_6_sanity": {
-                "enabled": True,
-                "extreme_return_threshold": 1.0,
-                "zero_volume_days": 5,
-                "volatility_multiplier": 5.0,
-                "min_price": 1e-8,
-            },
-            "check_7_logging": {
-                "enabled": True,
-                "save_provenance": True,
-                "provenance_dir": "_work/dqf/provenance",
-            },
-        }
-
-        # Override defaults with provided kwargs
-        for check_name, check_config in kwargs.items():
-            if check_name in self.checks:
-                # Merge with defaults (user config takes precedence)
-                self.checks[check_name].update(check_config)
-            else:
-                # Unknown check name - store it anyway (for extensibility)
-                self.checks[check_name] = check_config
+    def __post_init__(self) -> None:
+        if not isinstance(self.mode, DQFMode):
+            raise TypeError(
+                f"mode must be DQFMode.CERTIFICATION or DQFMode.DIAGNOSTIC, "
+                f"got {type(self.mode).__name__!r}"
+            )
+        if self.c4_max_consecutive_ffill < 1:
+            raise ValueError(
+                f"c4_max_consecutive_ffill must be >= 1, "
+                f"got {self.c4_max_consecutive_ffill}"
+            )
+        if self.c4_warn_threshold < 1:
+            raise ValueError(
+                f"c4_warn_threshold must be >= 1, "
+                f"got {self.c4_warn_threshold}"
+            )
+        if self.c4_warn_threshold >= self.c4_max_consecutive_ffill:
+            raise ValueError(
+                f"c4_warn_threshold ({self.c4_warn_threshold}) must be "
+                f"< c4_max_consecutive_ffill ({self.c4_max_consecutive_ffill})"
+            )
 
     @classmethod
-    def from_yaml(cls, filepath: str) -> "DQFConfig":
+    def from_yaml(cls, path: str) -> "DQFConfig":
         """
-        Load configuration from YAML file.
+        Load configuration from a YAML file.
 
-        Args:
-            filepath: Path to YAML configuration file
+        The YAML file must declare a ``mode`` key with value CERTIFICATION or
+        DIAGNOSTIC. All other keys are optional and fall back to defaults.
 
-        Returns:
-            DQFConfig instance with loaded settings
+        Example YAML::
 
-        Example YAML:
-            ```yaml
-            check_1_source:
-              enabled: true
-              require_metadata: true
-            check_2_integrity:
-              enabled: true
-              max_violation_rate: 0.02
-            ```
+            mode: CERTIFICATION
+            c4_max_consecutive_ffill: 3
+            c4_warn_threshold: 2
+            c1_enabled: false
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ValueError: If ``mode`` is missing or has an invalid value.
         """
-        filepath_obj = Path(filepath)
+        filepath = Path(path)
+        if not filepath.exists():
+            raise FileNotFoundError(f"DQF config file not found: {path}")
 
-        if not filepath_obj.exists():
-            raise FileNotFoundError(f"Config file not found: {filepath}")
+        with open(filepath) as f:
+            data = yaml.safe_load(f) or {}
 
-        with open(filepath_obj) as f:
-            data = yaml.safe_load(f)
+        mode_str = data.pop("mode", None)
+        if mode_str is None:
+            raise ValueError(
+                f"DQF config '{path}' must declare 'mode: CERTIFICATION|DIAGNOSTIC'"
+            )
+        try:
+            data["mode"] = DQFMode(mode_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid mode '{mode_str}' in '{path}'. "
+                f"Accepted values: CERTIFICATION, DIAGNOSTIC"
+            )
 
-        # Extract checks dict if nested, otherwise use entire dict
-        checks_data = data.get("checks", data)
-
-        return cls(**checks_data)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DQFConfig":
-        """
-        Create configuration from dictionary.
-
-        Args:
-            data: Dictionary with check configurations
-
-        Returns:
-            DQFConfig instance
-        """
         return cls(**data)
 
-    def to_dict(self) -> dict[str, Any]:
-        """
-        Export configuration to dictionary.
+    def to_dict(self) -> dict:
+        """Export configuration as a plain dictionary."""
+        return {
+            "mode": self.mode.value,
+            "c4_max_consecutive_ffill": self.c4_max_consecutive_ffill,
+            "c4_warn_threshold": self.c4_warn_threshold,
+            "c1_enabled": self.c1_enabled,
+        }
 
-        Returns:
-            Dictionary representation of configuration
-        """
-        return {"checks": self.checks.copy()}
-
-    def to_yaml(self, filepath: str) -> None:
-        """
-        Save configuration to YAML file.
-
-        Args:
-            filepath: Path where to save YAML configuration
-        """
-        filepath_obj = Path(filepath)
-        filepath_obj.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(filepath_obj, "w") as f:
+    def to_yaml(self, path: str) -> None:
+        """Save configuration to a YAML file."""
+        filepath = Path(path)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "w") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)
 
-    def get_enabled_checks(self) -> dict[int, dict[str, Any]]:
-        """
-        Get dictionary of enabled checks with their configs.
-
-        Returns:
-            Dict mapping check IDs (1-7) to their configurations.
-            Only includes checks where 'enabled' is True.
-
-        Example:
-            >>> config = DQFConfig()
-            >>> enabled = config.get_enabled_checks()
-            >>> # {1: {...}, 2: {...}, 3: {...}, 4: {...}, 5: {...}, 6: {...}, 7: {...}}
-        """
-        enabled = {}
-
-        for check_name, check_config in self.checks.items():
-            # Extract check ID from name (e.g., "check_1_source" -> 1)
-            if check_name.startswith("check_") and "_" in check_name[6:]:
-                try:
-                    check_id = int(check_name.split("_")[1])
-                    if check_config.get("enabled", True):
-                        enabled[check_id] = check_config
-                except (ValueError, IndexError):
-                    # Invalid check name format, skip
-                    continue
-
-        return enabled
-
-    def is_check_enabled(self, check_id: int) -> bool:
-        """
-        Check if a specific check is enabled.
-
-        Args:
-            check_id: Check ID (1-7)
-
-        Returns:
-            True if check is enabled, False otherwise
-        """
-        check_name = f"check_{check_id}_"  # Partial match
-
-        for name, config in self.checks.items():
-            if name.startswith(check_name):
-                return config.get("enabled", True)
-
-        return False
-
-    def get_check_config(self, check_id: int) -> dict[str, Any] | None:
-        """
-        Get configuration for a specific check.
-
-        Args:
-            check_id: Check ID (1-7)
-
-        Returns:
-            Check configuration dict, or None if not found
-        """
-        check_name = f"check_{check_id}_"
-
-        for name, config in self.checks.items():
-            if name.startswith(check_name):
-                return config.copy()
-
-        return None
-
     def __repr__(self) -> str:
-        """String representation of config."""
-        enabled_count = sum(1 for cfg in self.checks.values() if cfg.get("enabled", True))
-        return f"DQFConfig(checks={len(self.checks)}, enabled={enabled_count})"
+        return (
+            f"DQFConfig(mode={self.mode.value!r}, "
+            f"c4_max_consecutive_ffill={self.c4_max_consecutive_ffill}, "
+            f"c4_warn_threshold={self.c4_warn_threshold}, "
+            f"c1_enabled={self.c1_enabled})"
+        )

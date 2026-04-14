@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-DQF Example 01: Basic Validation
+DQF Example 01: Basic Validation — v1.1
 
 Demonstrates:
-- Loading OHLCV data
-- Running validation with default config
-- Interpreting results
-- Exporting report
+- DIAGNOSTIC mode: quick validation, no calendar required
+- CERTIFICATION mode: strict validation with calendar
+- Interpreting the MIF-Lite report (status, MPI, gate, UID)
+- Exporting the manifest (JSON / YAML)
 
 Usage:
     python examples/01_basic_validation.py
@@ -16,141 +16,165 @@ from pathlib import Path
 
 import pandas as pd
 
-from dqf import DQFConfig, DQFValidator
+from dqf import DQFConfig, DQFMode, DQFValidator
 
 
-def main():
-    print("=" * 60)
-    print("DQF Example 01: Basic Validation")
-    print("=" * 60)
-    print()
-
-    # Step 1: Load sample data
-    print("📊 Step 1: Loading sample data...")
-
-    # Create sample BTC-USD data (187 days)
-    dates = pd.date_range("2024-01-01", periods=188, freq="D", tz="UTC")
-    data = pd.DataFrame(
+def create_btc_data(periods: int = 60) -> pd.DataFrame:
+    """Synthetic BTC-USD daily data (CRYPTO_247 — weekends allowed)."""
+    dates = pd.date_range("2024-01-01", periods=periods, freq="D", tz="UTC")
+    return pd.DataFrame(
         {
-            "open": [45000 + i * 10 for i in range(len(dates))],
-            "high": [45500 + i * 10 for i in range(len(dates))],
-            "low": [44500 + i * 10 for i in range(len(dates))],
-            "close": [45200 + i * 10 for i in range(len(dates))],
-            "volume": [1000000 + i * 1000 for i in range(len(dates))],
+            "open":   [45_000 + i * 10 for i in range(len(dates))],
+            "high":   [45_500 + i * 10 for i in range(len(dates))],
+            "low":    [44_500 + i * 10 for i in range(len(dates))],
+            "close":  [45_200 + i * 10 for i in range(len(dates))],
+            "volume": [1_000_000 + i * 1_000 for i in range(len(dates))],
         },
         index=dates,
     )
 
-    print(f"✅ Loaded {len(data)} rows of BTC-USD data")
-    print(f"   Date range: {data.index[0]} to {data.index[-1]}")
-    print()
 
-    # Display sample
-    print("📈 Sample data (first 5 rows):")
-    print(data.head())
-    print()
+def create_spy_data(periods: int = 40) -> pd.DataFrame:
+    """Synthetic SPY weekday-only data (NYSE calendar)."""
+    dates = pd.bdate_range("2024-01-02", periods=periods, freq="B", tz="UTC")
+    return pd.DataFrame(
+        {
+            "open":   [450.0 + i * 0.5 for i in range(len(dates))],
+            "high":   [455.0 + i * 0.5 for i in range(len(dates))],
+            "low":    [445.0 + i * 0.5 for i in range(len(dates))],
+            "close":  [452.0 + i * 0.5 for i in range(len(dates))],
+            "volume": [50_000_000] * len(dates),
+        },
+        index=dates,
+    )
 
-    # Step 2: Create default configuration
-    print("⚙️  Step 2: Creating default configuration...")
-    config = DQFConfig()
-    print("✅ Default config created")
-    print("   - All 7 checks enabled")
-    print("   - Standard thresholds")
-    print()
 
-    # Step 3: Run validation
-    print("🔍 Step 3: Running validation...")
+def example_diagnostic_mode():
+    """DIAGNOSTIC mode — lenient, no calendar required."""
+    print("=" * 60)
+    print("Step 1 — DIAGNOSTIC mode (BTC-USD, no calendar)")
+    print("=" * 60)
+
+    data = create_btc_data()
+    config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
     validator = DQFValidator(config)
+
     report = validator.validate(data)
-    print("✅ Validation complete")
+
+    print(f"  Status   : {report.overall_status}")
+    print(f"  MPI      : {report.purity_index:.1f}/100")
+    print(f"  Gate     : {report.precondition_gate}")
+    print(f"  Calendar : {report.calendar}")
+    print(f"  Mode     : {report.mode}")
+    print(f"  UID      : {report.mif_uid[:48]}...")
     print()
 
-    # Step 4: Interpret results
+    print("  CORE checks:")
+    for check_id, status in report.core_results.items():
+        icon = "OK" if status in ("PASS", "SKIP") else "FAIL"
+        print(f"    [{icon}] {check_id}: {status}")
+
+    print("  ADVISORY checks:")
+    for check_id, status in report.advisory_results.items():
+        icon = "OK" if status in ("PASS", "SKIP") else "WARN"
+        print(f"    [{icon}] {check_id}: {status}")
+    print()
+
+    return report
+
+
+def example_certification_mode():
+    """CERTIFICATION mode — strict, calendar required."""
     print("=" * 60)
-    print("📋 VALIDATION RESULTS")
+    print("Step 2 — CERTIFICATION mode (SPY / NYSE)")
     print("=" * 60)
+
+    data = create_spy_data()
+    config = DQFConfig(mode=DQFMode.CERTIFICATION)
+    validator = DQFValidator(config)
+
+    report = validator.validate(data, calendar="NYSE")
+
+    print(f"  Status    : {report.overall_status}")
+    print(f"  Certified : {report.is_certified}")
+    print(f"  MPI       : {report.purity_index:.1f}/100")
+    print(f"  Gate      : {report.precondition_gate}")
+    print(f"  Vitality  : {report.vitality_label}")
     print()
 
-    print(f"Overall Status: {report.overall_status}")
-    print(f"Checks Passed:  {report.checks_passed}/{report.total_checks}")
-    print(f"Issues Found:   {len(report.all_issues)}")
-    print()
-
-    # Individual check results
-    print("Individual Check Results:")
-    print("-" * 60)
-    for check_name, result in report.check_results.items():
-        status_icon = "✅" if result.status == "PASS" else "❌"
-        print(f"{status_icon} {check_name}: {result.status}")
-        if result.message:
-            print(f"   Message: {result.message}")
-    print()
-
-    # Issues (if any)
-    if report.all_issues:
-        print("⚠️  Issues Detected:")
-        print("-" * 60)
-        for issue in report.all_issues:
-            print(f"[{issue.severity}] {issue.check_name}")
-            print(f"   {issue.message}")
-        print()
+    if report.is_certified:
+        print("  Data is certified — safe for production use.")
     else:
-        print("✅ No issues detected - data is clean!")
-        print()
+        print(f"  Certification failed — gate={report.precondition_gate}")
+    print()
 
-    # Step 5: Access cleaned data
-    if report.overall_status == "PASS":
-        print("✅ Step 5: Accessing cleaned data...")
-        clean_data = report.cleaned_data
-        print(f"   Shape: {clean_data.shape}")
-        print(f"   Columns: {list(clean_data.columns)}")
-        print()
+    return report
 
-        # Save cleaned data (optional)
+
+def example_export_report(report):
+    """Export the MIF-Lite manifest as JSON and YAML."""
+    print("=" * 60)
+    print("Step 3 — Export MIF-Lite manifest")
+    print("=" * 60)
+
+    output_dir = Path("_work/examples/reports")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # to_json() and to_yaml() return strings — write them manually
+    json_path = output_dir / "validation_report.json"
+    yaml_path = output_dir / "validation_report.yaml"
+
+    json_path.write_text(report.to_json())
+    yaml_path.write_text(report.to_yaml())
+
+    print(f"  JSON : {json_path}  ({json_path.stat().st_size} bytes)")
+    print(f"  YAML : {yaml_path}  ({yaml_path.stat().st_size} bytes)")
+    print()
+
+    # Human-readable summary
+    report.print_summary()
+
+
+def example_use_certified_data(report):
+    """Access the validated DataFrame for downstream use."""
+    print("=" * 60)
+    print("Step 4 — Use validated data")
+    print("=" * 60)
+
+    if report.is_certified:
+        clean = report.cleaned_data
+        print(f"  Shape  : {clean.shape}")
+        print(f"  Columns: {list(clean.columns)}")
+
         output_dir = Path("_work/examples")
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        clean_data.to_csv(output_dir / "btc_usd_clean.csv")
-        print(f"   💾 Saved: {output_dir / 'btc_usd_clean.csv'}")
-        print()
+        csv_path = output_dir / "spy_certified.csv"
+        clean.to_csv(csv_path)
+        print(f"  Saved  : {csv_path}")
     else:
-        print("❌ Validation failed - data not clean")
-        print("   Fix issues before using data in production")
-        print()
-
-    # Step 6: Export report
-    print("📄 Step 6: Exporting report...")
-    report_dir = Path("_work/examples/reports")
-    report_dir.mkdir(parents=True, exist_ok=True)
-
-    # Export as YAML (human-readable)
-    yaml_path = report_dir / "validation_report.yaml"
-    report.to_yaml(str(yaml_path))
-    print(f"   💾 YAML: {yaml_path}")
-
-    # Export as JSON (machine-readable)
-    json_path = report_dir / "validation_report.json"
-    report.to_json(str(json_path))
-    print(f"   💾 JSON: {json_path}")
+        print("  Certification required before using data in production.")
     print()
 
-    # Step 7: Summary
-    print("=" * 60)
-    print("📊 SUMMARY")
+
+def main():
+    print("\n")
+    print("DQF v1.1 — Basic Validation Example")
     print("=" * 60)
     print()
-    print(f"✅ Validation {'PASSED' if report.overall_status == 'PASS' else 'FAILED'}")
-    print(f"✅ {report.checks_passed} checks passed")
-    print(f"✅ Reports exported to: {report_dir}")
 
-    if report.overall_status == "PASS":
-        print(f"✅ Clean data saved to: {output_dir}")
+    # 1. Quick diagnostic run
+    example_diagnostic_mode()
 
-    print()
-    print("💡 Next steps:")
-    print("   - Review report files for details")
-    print("   - Try examples/02_custom_config.py for advanced config")
-    print("   - Use cleaned data in your analysis/trading pipeline")
+    # 2. Strict certification run
+    report = example_certification_mode()
+
+    # 3. Export manifest
+    example_export_report(report)
+
+    # 4. Use certified data
+    example_use_certified_data(report)
+
+    print("Done. Next: python examples/02_custom_config.py")
     print()
 
 

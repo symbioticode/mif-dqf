@@ -1,13 +1,16 @@
 # DQF - Data Quality Framework
 
-[![Tests](https://img.shields.io/badge/tests-104%2F104%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
-[![Coverage](https://img.shields.io/badge/coverage-77%25-yellow)](https://github.com/symbioticode/mif-dqf)
+[![Tests](https://img.shields.io/badge/tests-189%2F189%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/symbioticode/mif-dqf)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Production-ready validation and purification framework for OHLCV financial data.**
+**MIF-certified data quality framework for OHLCV financial data.**
 
-DQF performs 7 comprehensive checks to ensure data quality and generates certified clean datasets for reproducible quantitative analysis and trading.
+DQF v1.1 validates financial time series through CORE and ADVISORY checks, produces
+**MIF-Lite manifests** with a cryptographic **MIF-UID** and a **MIF Purity Index (MPI)**,
+and supports two operational modes: **CERTIFICATION** (strict, deterministic) and
+**DIAGNOSTIC** (advisory, flexible).
 
 ---
 
@@ -173,53 +176,62 @@ pip install dqf
 
 ```python
 import pandas as pd
-from dqf import DQFValidator, DQFConfig
+from dqf import DQFValidator, DQFConfig, DQFMode
 
-# Load your data
-data = pd.read_csv("btc_usd.csv", index_col=0, parse_dates=True)
-data.index = data.index.tz_localize('UTC')  # Add timezone
+# Load your data (timezone-aware index required)
+data = pd.read_csv("spy.csv", index_col=0, parse_dates=True)
+data.index = data.index.tz_localize("UTC")
 
-# Validate and purify
-config = DQFConfig()
+# CERTIFICATION mode — strict, deterministic, calendar required
+config = DQFConfig(mode=DQFMode.CERTIFICATION)
 validator = DQFValidator(config)
-report = validator.validate(data, symbol="BTC-USD", source="yahoo")
+report = validator.validate(data, calendar="NYSE")
 
-# Use certified clean data
-if report.overall_status == "PASS":
-    print(f"✅ Data certified: {report.checks_passed}/7 checks passed")
-    
-    # Use cleaned data for analysis
-    clean_data = report.cleaned_data
-    
-    # Export provenance for audit
-    report.to_yaml("provenance_btc_usd.yaml")
-    
-    # Proceed with confidence
-    run_backtest(clean_data)
+if report.is_certified:
+    print(f"✅ CERTIFIED  MPI={report.purity_index:.1f}/100  gate={report.precondition_gate}")
+    print(f"   UID: {report.mif_uid}")
+    clean_data = report.cleaned_data   # validated DataFrame
+    report.print_summary()             # human-readable summary
 else:
-    print(f"❌ Data quality issues: {len(report.all_issues)} problems")
-    for issue in report.all_issues:
-        print(f"  - {issue.check_name}: {issue.message}")
+    print(f"❌ {report.overall_status}  gate={report.precondition_gate}")
+    print(f"   CORE:     {report.core_results}")
+    print(f"   ADVISORY: {report.advisory_results}")
 ```
 
-**Output**:
+**DIAGNOSTIC mode** (no calendar required, useful for exploration):
+```python
+config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
+report = DQFValidator(config).validate(data)
+print(f"Status: {report.overall_status}  MPI: {report.purity_index:.1f}")
 ```
-✅ Data certified: 7/7 checks passed
+
+**Output** (CERTIFICATION, clean data):
+```
+✅ CERTIFIED  MPI=100.0/100  gate=1.0
+   UID: sha256:a3f9...
 ```
 
 ---
 
-## 📋 The 7 Checks
+## 📋 DQF v1.1 Checks
 
-| # | Check | Purpose | Severity |
-|---|-------|---------|----------|
-| 1 | **Source Uniqueness** | Single canonical source + metadata | INFO/WARNING |
-| 2 | **OHLCV Integrity** | Market physics (H≥L, H≥O/C, V≥0, no NaN) | CRITICAL |
-| 3 | **Calendar Alignment** | Trading calendar validation | WARNING |
-| 4 | **Forward-Fill Detection** | Interpolation abuse detection | WARNING/CRITICAL |
-| 5 | **Index Traceability** | Unique, chronological, timezone-aware | CRITICAL |
-| 6 | **Sanity Tests** | Statistical anomalies (extreme returns, etc.) | WARNING |
-| 7 | **Comprehensive Logging** | Provenance tracking + JSON export | INFO |
+### CORE checks — failure → `STATUS_VOID`, `precondition_gate = 0.0`
+
+| ID | Check | Purpose |
+|----|-------|---------|
+| PROD | Envelope seal | Output trust mechanism — always injected PASS |
+| C2 | **OHLCV Integrity** | Market physics (H≥L, H≥O/C, V≥0, no NaN) |
+| C3 | **Calendar Alignment** | Declared calendar required in CERTIFICATION mode |
+| C5 | **Index Traceability** | Unique, chronological, timezone-aware index |
+
+### ADVISORY checks — warn → `STATUS_WARNING`, gate capped by MPI
+
+| ID | Check | Purpose |
+|----|-------|---------|
+| C1 | Source Uniqueness | Single canonical source (SKIP in Phase 1 — DAL pending) |
+| C4 | **Forward-Fill Detection** | Detects interpolation abuse (consecutive repeats) |
+
+> **Removed in v1.1**: C6 (Sanity Tests) migrated to MIF Layer 1; C7 (Logging) replaced by PROD envelope.
 
 ---
 
@@ -229,28 +241,26 @@ else:
 
 ```python
 import pandas as pd
-from dqf import DQFValidator, DQFConfig
+from pathlib import Path
+from dqf import DQFValidator, DQFConfig, DQFMode
 
-# Research scenario: Validating historical data for paper
+# Research scenario: Certifying historical data for a paper
 data = pd.read_csv("spy_2020_2024.csv", index_col=0, parse_dates=True)
-data.index = data.index.tz_localize('UTC')
+data.index = data.index.tz_localize("UTC")
 
-validator = DQFValidator(DQFConfig())
-report = validator.validate(data, symbol="SPY", source="yahoo")
+config = DQFConfig(mode=DQFMode.CERTIFICATION)
+report = DQFValidator(config).validate(data, calendar="NYSE")
 
-if report.overall_status == "PASS":
-    # Save certified dataset
+if report.is_certified:
+    # Save certified dataset with provenance
     report.cleaned_data.to_csv("spy_2020_2024_certified.csv")
-    
-    # Save provenance for paper appendix
-    report.to_yaml("provenance_spy.yaml")
-    
-    print("✅ Dataset certified - ready for backtesting")
-    print(f"Provenance: {report.provenance['timestamp']}")
+    Path("provenance_spy.json").write_text(report.to_json())
+
+    print(f"✅ CERTIFIED  MPI={report.purity_index:.1f}/100")
+    print(f"   MIF-UID: {report.mif_uid}")
 else:
-    print(f"❌ {len(report.all_issues)} issues detected:")
-    for issue in report.all_issues:
-        print(f"  - [{issue.severity}] {issue.message}")
+    print(f"❌ {report.overall_status} (gate={report.precondition_gate})")
+    print(f"   CORE failures: {report.core_results}")
 ```
 
 ---
@@ -258,39 +268,37 @@ else:
 ### Example 2: Production Pipeline
 
 ```python
-from dqf import DQFValidator, DQFConfig
 import logging
+from dqf import DQFValidator, DQFConfig, DQFMode
 
-# Production scenario: Daily data validation
 logger = logging.getLogger(__name__)
 
-def validate_daily_data(symbol: str, data: pd.DataFrame) -> pd.DataFrame:
-    """Validate daily data with strict production config."""
-    
-    # Strict production configuration
-    config = DQFConfig(
-        check_2_integrity={'max_violation_rate': 0.0},  # Zero tolerance
-        check_4_ffill={'max_consecutive': 1, 'severity': 'CRITICAL'}
-    )
-    
-    validator = DQFValidator(config)
-    report = validator.validate(data, symbol=symbol, source="production")
-    
-    if report.overall_status != "PASS":
-        logger.critical(f"{symbol}: Data quality FAIL")
-        for issue in report.all_issues:
-            logger.error(f"  - {issue.check_name}: {issue.message}")
-        raise ValueError(f"Data quality validation failed for {symbol}")
-    
-    logger.info(f"{symbol}: Data quality PASS ✅")
+# Shared validator — reuse across calls (thread-safe for validate())
+_config    = DQFConfig(mode=DQFMode.CERTIFICATION, c4_warn_threshold=1)
+_validator = DQFValidator(_config)
+
+def validate_daily_data(symbol: str, calendar: str, data: pd.DataFrame) -> pd.DataFrame:
+    """Certify daily data; raise on VOID."""
+    report = _validator.validate(data, calendar=calendar)
+
+    if report.overall_status == "VOID":
+        logger.critical("%s: VOID  core=%s", symbol, report.core_results)
+        raise ValueError(f"CORE failure for {symbol} — gate=0")
+
+    if report.overall_status == "WARNING":
+        logger.warning("%s: WARNING  advisory=%s  MPI=%.1f",
+                       symbol, report.advisory_results, report.purity_index)
+
+    logger.info("%s: %s  MPI=%.1f  UID=%s",
+                symbol, report.overall_status, report.purity_index, report.mif_uid)
     return report.cleaned_data
 
-# Usage in pipeline
+# Usage
 try:
-    clean_data = validate_daily_data("BTC-USD", raw_data)
-    load_to_warehouse(clean_data)
-except ValueError as e:
-    alert_team(str(e))
+    clean = validate_daily_data("SPY", "NYSE", raw_data)
+    load_to_warehouse(clean)
+except ValueError as exc:
+    alert_team(str(exc))
     halt_pipeline()
 ```
 
@@ -299,81 +307,65 @@ except ValueError as e:
 ### Example 3: Batch Processing
 
 ```python
-from dqf import DQFValidator, DQFConfig
 from pathlib import Path
+from dqf import DQFValidator, DQFConfig, DQFMode
 
-# Batch scenario: Validate multiple symbols
-files = ["BTC-USD.csv", "ETH-USD.csv", "SPY.csv", "GLD.csv"]
-config = DQFConfig()
+CALENDAR = {"BTC-USD": "CRYPTO_247", "ETH-USD": "CRYPTO_247",
+            "SPY": "NYSE", "GLD": "NYSE"}
+
+config    = DQFConfig(mode=DQFMode.CERTIFICATION)
 validator = DQFValidator(config)
+results   = {}
 
-results = {}
-for filepath in files:
-    symbol = Path(filepath).stem
-    data = pd.read_csv(filepath, index_col=0, parse_dates=True)
-    data.index = data.index.tz_localize('UTC')
-    
-    report = validator.validate(data, symbol=symbol)
-    results[symbol] = report
-    
-    print(f"{symbol}: {report.overall_status}")
+for symbol, calendar in CALENDAR.items():
+    data = pd.read_csv(f"{symbol}.csv", index_col=0, parse_dates=True)
+    data.index = data.index.tz_localize("UTC")
+    results[symbol] = validator.validate(data, calendar=calendar)
+    print(f"{symbol}: {results[symbol].overall_status}  MPI={results[symbol].purity_index:.1f}")
 
-# Extract only certified clean datasets
-certified_datasets = {
-    symbol: report.cleaned_data
-    for symbol, report in results.items()
-    if report.overall_status == 'PASS'
-}
+# Keep only certified datasets
+certified = {s: r.cleaned_data for s, r in results.items() if r.is_certified}
+print(f"\n{len(certified)}/{len(CALENDAR)} datasets CERTIFIED")
 
-print(f"\n✅ {len(certified_datasets)}/{len(files)} datasets certified")
-
-# Save certified data for production
-for symbol, clean_data in certified_datasets.items():
-    clean_data.to_csv(f"certified/{symbol}_clean.csv")
-    results[symbol].to_yaml(f"provenance/{symbol}_provenance.yaml")
+# Persist manifests
+for symbol, report in results.items():
+    Path(f"manifests/{symbol}.mif.json").write_text(report.to_json())
 ```
 
 ---
 
 ### Example 4: Custom Check
 
+See `examples/04_custom_check.py` for a complete example. Custom checks extend
+`BaseCheck` and are added to `DQFValidator._checks` before calling `validate()`.
+
 ```python
-from dqf import DQFValidator, DQFConfig
-from dqf.checks.base import BaseCheck, CheckResult
+from dqf import DQFValidator, DQFConfig, DQFMode
+from dqf.checks.base import BaseCheck
+from dqf.core.enums import STATUS_FAIL, STATUS_PASS
 
 class LiquidityCheck(BaseCheck):
-    """Custom check: Ensure minimum liquidity."""
-    
-    def __init__(self, min_daily_volume: float = 1_000_000):
-        super().__init__(
-            check_id="check_8_liquidity",
-            check_name="Minimum Liquidity Check"
-        )
-        self.min_daily_volume = min_daily_volume
-    
-    def run(self, df, **kwargs):
-        self._validate_dataframe(df)
-        
-        low_volume_days = (df['volume'] < self.min_daily_volume).sum()
-        
-        if low_volume_days > 0:
+    """Advisory check: minimum daily volume."""
+
+    def __init__(self, min_vol: float = 1_000_000):
+        super().__init__(check_id="check_custom_liquidity",
+                         check_name="Minimum Liquidity")
+        self.min_vol = min_vol
+
+    def run(self, data, **kwargs):
+        low = (data["volume"] < self.min_vol).sum()
+        if low:
             return self._create_result(
-                status='FAIL',
-                severity='WARNING',
-                message=f'{low_volume_days} days below minimum volume',
-                details={'low_volume_days': low_volume_days, 'threshold': self.min_daily_volume}
+                status=STATUS_FAIL,
+                message=f"{low} days below minimum volume ({self.min_vol:,.0f})",
+                details={"low_volume_days": low},
             )
-        
-        return self._create_result(
-            status='PASS',
-            message='All days meet minimum liquidity requirement'
-        )
+        return self._create_result(status=STATUS_PASS, message="Liquidity OK")
 
-# Add custom check to validator
-validator = DQFValidator(DQFConfig())
-validator.add_custom_check('check_8_liquidity', LiquidityCheck(min_daily_volume=500_000))
-
-report = validator.validate(data)  # Now runs 8 checks
+config    = DQFConfig(mode=DQFMode.DIAGNOSTIC)
+validator = DQFValidator(config)
+validator._checks["C_LIQ"] = LiquidityCheck(min_vol=500_000)
+report    = validator.validate(data)
 ```
 
 ---
@@ -388,38 +380,54 @@ report = validator.validate(data)  # Now runs 8 checks
 └────────────────┬────────────────────────┘
                  ↓
 ┌─────────────────────────────────────────┐
-│   DQFValidator (7 Checks)               │
+│   DQFValidator (mode: CERT | DIAG)     │
+│  CORE checks (failure → VOID)          │
 │  ┌─────────────────────────────────┐   │
-│  │ 1. Source Uniqueness            │   │
-│  │ 2. OHLCV Integrity              │   │
-│  │ 3. Calendar Alignment           │   │
-│  │ 4. Forward-Fill Detection       │   │
-│  │ 5. Index Traceability           │   │
-│  │ 6. Sanity Tests                 │   │
-│  │ 7. Comprehensive Logging        │   │
+│  │ C2. OHLCV Integrity             │   │
+│  │ C3. Calendar Alignment          │   │
+│  │ C5. Index Traceability          │   │
+│  └─────────────────────────────────┘   │
+│  ADVISORY checks (warn → WARNING)      │
+│  ┌─────────────────────────────────┐   │
+│  │ C1. Source Uniqueness (SKIP/P1) │   │
+│  │ C4. Forward-Fill Detection      │   │
 │  └─────────────────────────────────┘   │
 └────────────────┬────────────────────────┘
                  ↓
 ┌─────────────────────────────────────────┐
-│   Output: DQFReport                     │
-│  - overall_status: PASS/FAIL            │
-│  - cleaned_data: Certified DataFrame    │
-│  - provenance: Full audit trail         │
+│   PROD Envelope (MIF-Lite manifest)    │
+│  ┌─────────────────────────────────┐   │
+│  │ MIF-UID  = SHA-256(hash+ver+cal)│   │
+│  │ MPI      = 100×(1−Σwᵢ/N)       │   │
+│  │ gate     = 1.0/0.8/0.0         │   │
+│  └─────────────────────────────────┘   │
+└────────────────┬────────────────────────┘
+                 ↓
+┌─────────────────────────────────────────┐
+│   Output: DQFReport (.mif.json)        │
+│  - overall_status: CERTIFIED/WARNING/  │
+│                    VOID                │
+│  - purity_index: 0–100 (MPI)          │
+│  - precondition_gate: 0.0/0.8/1.0     │
+│  - mif_uid: sha256:...                 │
+│  - cleaned_data: validated DataFrame   │
 └─────────────────────────────────────────┘
 ```
 
 **Design Principles**:
-- **Deterministic**: Same data → Same results (always)
-- **Transparent**: Full provenance tracking
-- **Extensible**: Add custom checks easily
-- **Production-Ready**: 104/104 tests passing
+- **Deterministic**: Same data + same args → Same MIF-UID (always)
+- **Dual mode**: CERTIFICATION (strict) vs DIAGNOSTIC (advisory)
+- **MPI**: continuous purity score replaces binary PASS/FAIL
+- **Production-Ready**: 189/189 tests passing
 
 ---
 
 ## 📖 Documentation
 
-- **[API Reference](docs/API.md)**: Complete API documentation (3,500+ lines)
+- **[DQF Specification](docs/DQF_SPECIFICATION.md)**: Canonical architectural decisions (v1.1 design)
+- **[API Reference](docs/API.md)**: Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)**: Design patterns and technical decisions
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues and solutions
 - **[Examples](examples/)**: 4 complete examples (basic, config, batch, custom)
 
 ---
@@ -428,14 +436,10 @@ report = validator.validate(data)  # Now runs 8 checks
 
 ```bash
 # Run all tests
-pytest tests/ -v                    # 104/104 passing
+pytest tests/ -v                    # 189/189 passing
 
 # Coverage
-pytest tests/ --cov=dqf            # 77% coverage
-
-# Linting
-ruff check dqf tests examples      # 0 errors
-black dqf tests examples --check   # All formatted
+pytest tests/ --cov=dqf
 
 # Examples
 python examples/01_basic_validation.py    # ✅ Works
@@ -445,10 +449,8 @@ python examples/04_custom_check.py        # ✅ Works
 ```
 
 **Quality Metrics**:
-- **104 tests** (96 unit + 8 integration)
-- **77% coverage** (production code)
-- **0 warnings** (clean)
-- **0 linting errors** (ruff, black, isort)
+- **189 tests** (164 unit + 25 integration)
+- **0 failures**
 
 ---
 
@@ -457,16 +459,21 @@ python examples/04_custom_check.py        # ✅ Works
 ```
 dqf/
 ├── dqf/                          # Source code
-│   ├── checks/                  # The 7 checks
-│   ├── core/                    # Config, Validator, Report
-│   └── utils/                   # Calendar, Provenance, Logger
-├── tests/                       # Test suite (104 tests)
+│   ├── checks/                  # C1–C5 checks (v1.1.0)
+│   ├── core/                    # Config, Validator, Report, PRODEnvelope
+│   └── utils/                   # Calendar utilities, MPI
+├── tests/                       # Test suite (189 tests)
+│   ├── unit/                    # Per-module unit tests
+│   └── integration/             # End-to-end pipeline tests
 ├── examples/                    # Complete examples (4)
-├── docs/                        # Documentation
-│   ├── API.md                   # API reference (3,500+ lines)
-│   └── ARCHITECTURE.md          # Design & patterns
+├── docs/
+│   ├── DQF_SPECIFICATION.md     # Canonical specification (v1.1)
+│   ├── API.md                   # API reference
+│   ├── ARCHITECTURE.md          # Design & patterns
+│   └── TROUBLESHOOTING.md       # Common issues
+├── scripts/
+│   └── test_install.py          # Installation smoke test
 ├── pyproject.toml               # Package metadata
-├── README.md                    # This file
 └── LICENSE                      # MIT License
 ```
 
@@ -507,61 +514,65 @@ Contributions welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guideli
 
 **Performance** (100 days of data):
 ```
-Total validation time: ~1.2s
-  - Check 1 (Source): 0.05s
-  - Check 2 (Integrity): 0.32s
-  - Check 3 (Calendar): 0.18s
-  - Check 4 (Ffill): 0.25s
-  - Check 5 (Index): 0.08s
-  - Check 6 (Sanity): 0.22s
-  - Check 7 (Logging): 0.10s
+Total validation time: ~0.6s
+  - C2 (Integrity):    0.32s
+  - C3 (Calendar):     0.10s
+  - C4 (Ffill):        0.10s
+  - C5 (Index):        0.08s
+  - PROD Envelope:     <0.01s
 ```
 
 **Scalability**:
-- 100 days: ~1.2s
-- 1,000 days: ~3.5s
-- 10,000 days: ~25s
+- 100 days:    ~0.6s
+- 1,000 days:  ~2.0s
+- 10,000 days: ~15s
 
 ---
 
 ## 🗺️ Roadmap
 
-### v1.0.0 (Current) ✅
-- ✅ 7 comprehensive checks
-- ✅ Certified clean data output
-- ✅ Complete provenance tracking
-- ✅ 104/104 tests passing
+### v1.0.0 (legacy)
+- 7 checks (Source, Integrity, Calendar, Forward-Fill, Index, Sanity, Logging)
+- Binary PASS/FAIL report
 
-### v1.1.0 (March 2026)
-- [ ] Enabled filtering (selective checks)
-- [ ] Performance metrics in reports
-- [ ] Parallel check execution
+### v1.1.0 (current) ✅
+- ✅ Two operational modes: **CERTIFICATION** (strict) vs **DIAGNOSTIC** (advisory)
+- ✅ CORE/ADVISORY check classification — CORE failure → VOID, gate=0
+- ✅ PROD envelope produces MIF-Lite manifest (.mif.json)
+- ✅ MIF Purity Index (MPI) — 0–100 continuous purity score
+- ✅ MIF-UID — `SHA-256(data_hash + dqf_version + calendar + mode)`
+- ✅ C6 (Sanity) migrated to MIF Layer 1; C7 (Logging) replaced by PROD envelope
+- ✅ 189/189 tests passing
 
-### v1.2.0 (April 2026)
-- [ ] Active data cleaning (optional)
-- [ ] Auto-repair strategies
-- [ ] Cleaning diff reports
+### v1.2.0 — Active cleaning (planned)
+- [ ] Optional deterministic data transformation in CERTIFICATION mode
+- [ ] Before/after diff reports
 
-### v2.0.0 (Q2 2026)
-- [ ] DAL integration (Data Abstraction Layer)
-- [ ] Automatic validation on fetch
-- [ ] Complete provenance chain
+### v2.0.0 — MIF integration (planned)
+- [ ] DAL integration (`get_certified_data()`)
+- [ ] C1 (Source Uniqueness) activated — DAL handoff
+- [ ] Full provenance chain: source → DQF → MIF
 
 ---
 
 ## 🤝 Ecosystem
 
-DQF is part of the **MIF Ecosystem**:
+DQF is the foundational layer of the **MIF (Metric Integrity Framework)** ecosystem.
 
 ```
-MIF (Layers 1-5) = Metric certification
-    ↑
-DAL (Layer 0) = Multi-source abstraction [Q2 2026]
-    ↑
-DQF (Layer -1) = Data purification [YOU ARE HERE]
-    ↑
-Raw Sources (Yahoo, Binance, etc.)
+MIF Layers 1–5  = Metric certification & strategy validation
+       ↑           (score capped if DQF precondition fails)
+     DAL         = Multi-source data abstraction [planned]
+       ↑
+     DQF         = Data quality gate [YOU ARE HERE]
+       ↑
+Raw Sources     = Yahoo Finance, Binance, Kraken, etc.
 ```
+
+DQF acts as a `precondition_gate`: if data does not pass DQF, downstream MIF
+scores are bounded regardless of metric quality. See
+[DQF_SPECIFICATION.md](docs/DQF_SPECIFICATION.md) for the full integration
+contract.
 
 ---
 

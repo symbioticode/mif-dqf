@@ -10,7 +10,7 @@ Test scenarios:
 """
 
 from dqf.checks.check_1_source import SourceUniquenessCheck
-from dqf.core.enums import STATUS_PASS, STATUS_WARNING
+from dqf.core.enums import STATUS_PASS, STATUS_WARN
 
 
 class TestSourceUniquenessCheck:
@@ -41,7 +41,7 @@ class TestSourceUniquenessCheck:
         result = check.run(data=clean_ohlcv_data, source=None)
 
         #  FIX: Changed to WARNING (not FAIL)
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         assert result.details["source"] is None
 
     def test_fail_empty_source(self, clean_ohlcv_data):
@@ -51,7 +51,7 @@ class TestSourceUniquenessCheck:
         result = check.run(data=clean_ohlcv_data, source="")
 
         #  FIX: Changed to WARNING (not FAIL)
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
 
     def test_pass_with_metadata(self, clean_ohlcv_data, minimal_metadata):
         """Test metadata is captured when provided."""
@@ -79,7 +79,7 @@ class TestSourceUniquenessCheck:
         #  FIX: Implementation might not enforce require_metadata strictly
         # Current behavior: PASS (metadata requirement not critical)
         # This is acceptable - metadata is "nice to have", not mandatory
-        assert result.status in [STATUS_PASS, STATUS_WARNING]
+        assert result.status in [STATUS_PASS, STATUS_WARN]
         # If implementation changes to enforce, expect WARNING/FAIL
 
     def test_warn_large_gap_detected(self, data_with_large_gap):
@@ -88,7 +88,7 @@ class TestSourceUniquenessCheck:
 
         result = check.run(data=data_with_large_gap, source="test_source", max_gap_days=30)
 
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         #  FIX: Implementation returns generic message
         # Just verify status is WARNING and relevant details exist
         warnings = result.details.get("warnings")

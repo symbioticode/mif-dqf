@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from dqf.checks.base import BaseCheck, CheckResult
-from dqf.core.enums import STATUS_FAIL, STATUS_PASS, STATUS_WARNING
+from dqf.core.enums import STATUS_FAIL, STATUS_PASS, STATUS_WARN
 
 
 class MockCheck(BaseCheck):
@@ -69,11 +69,11 @@ class TestBaseCheck:
         check = MockCheck()
 
         result = check._create_result(
-            status=STATUS_WARNING, message="Test warning", details={"key": "value"}
+            status=STATUS_WARN, message="Test warning", details={"key": "value"}
         )
 
         assert isinstance(result, CheckResult)
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         assert result.message == "Test warning"
         assert result.check_name == "Mock Check"
         assert result.details["key"] == "value"
@@ -141,12 +141,12 @@ class TestCheckResult:
         # Use dataclasses.asdict() if needed
         result = CheckResult(
             check_name="test_check",
-            status=STATUS_WARNING,
+            status=STATUS_WARN,
             message="Warning message",
             details={"foo": "bar"},
         )
 
-        assert result.status == STATUS_WARNING
+        assert result.status == STATUS_WARN
         assert result.details["foo"] == "bar"
 
     def test_is_passing_pass(self):
@@ -156,7 +156,7 @@ class TestCheckResult:
 
     def test_is_passing_warn(self):
         """Test passed property for WARNING."""
-        result = CheckResult(check_name="test", status=STATUS_WARNING, message="", details={})
+        result = CheckResult(check_name="test", status=STATUS_WARN, message="", details={})
         # WARNING is not "passed" in strict sense
         assert result.passed is False
 

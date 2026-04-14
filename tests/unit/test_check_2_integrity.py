@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from dqf.checks.check_2_integrity import IntegrityCheck
-from dqf.core.enums import STATUS_ERROR, STATUS_FAIL, STATUS_PASS, STATUS_WARNING
+from dqf.core.enums import STATUS_ERROR, STATUS_FAIL, STATUS_PASS, STATUS_WARN
 
 
 class TestIntegrityCheck:
@@ -145,7 +145,7 @@ class TestIntegrityCheck:
 
         #  FIX: v1.0.0 might treat NaN as acceptable (to be filled)
         # Check actual implementation behavior
-        assert result.status in [STATUS_PASS, STATUS_WARNING, STATUS_FAIL]
+        assert result.status in [STATUS_PASS, STATUS_WARN, STATUS_FAIL]
 
     def test_pass_nan_volume_acceptable(self):
         """Test NaN in Volume is acceptable."""

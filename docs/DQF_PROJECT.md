@@ -1,8 +1,14 @@
 # DQF - Data Quality Framework  
-**Version** : 1.0.0  
+**Version** : 1.0.0 — **(document historique — voir v1.1 dans README.md)**  
 **Date** : 20 janvier 2026  
-**Statut** : ✅ Production Ready (104/104 tests passing)  
+**Statut** : ✅ Production Ready (104/104 tests passing à l'époque)  
 **Licence** : MIT  
+
+> ⚠️ **Ce document décrit DQF v1.0.0** (release de janvier 2026). La version courante est **v1.1.0**.
+> Pour la documentation à jour, voir :
+> - [`README.md`](../README.md) — Quick Start v1.1
+> - [`docs/API.md`](./API.md) — Référence API v1.1
+> - [`docs/DQF_SPECIFICATION.md`](./DQF_SPECIFICATION.md) — Spec canonique v1.1
 
 ---
 
@@ -31,17 +37,17 @@ MIF (Layers 1-5) = Certification métriques
 
 ## 🎯 Fonctionnalités
 
-### Les 7 Checks de Validation
+### Les 7 Checks de Validation (v1.0.0 — historique)
 
-| Check | Nom | Description | Status |
-|-------|-----|-------------|--------|
-| 1 | Source Uniqueness | Validation source unique + métadonnées | ✅ |
-| 2 | OHLCV Integrity | Lois physiques marché (H≥L, H≥O/C, etc.) | ✅ |
-| 3 | Calendar Alignment | Détection auto calendar + weekends/holidays | ✅ |
-| 4 | Forward-Fill Limits | Détection interpolation excessive | ✅ |
-| 5 | Index Traceability | Index unique, chronologique, timezone | ✅ |
-| 6 | Sanity Tests | Anomalies statistiques (returns, volume, volatility) | ✅ |
-| 7 | Comprehensive Logging | Provenance tracking complet + export JSON | ✅ |
+| Check | Nom | Description | Statut v1.0 | Statut v1.1 |
+|-------|-----|-------------|-------------|-------------|
+| 1 | Source Uniqueness | Validation source unique + métadonnées | ✅ | ADVISORY (SKIP Phase 1) |
+| 2 | OHLCV Integrity | Lois physiques marché (H≥L, H≥O/C, etc.) | ✅ | CORE (C2) |
+| 3 | Calendar Alignment | Détection auto calendar + weekends/holidays | ✅ | CORE (C3) |
+| 4 | Forward-Fill Limits | Détection interpolation excessive | ✅ | ADVISORY (C4) |
+| 5 | Index Traceability | Index unique, chronologique, timezone | ✅ | CORE (C5) |
+| 6 | Sanity Tests | Anomalies statistiques (returns, volume, volatility) | ✅ | **Supprimé → MIF Layer 1** |
+| 7 | Comprehensive Logging | Provenance tracking complet + export JSON | ✅ | **Supprimé → PROD Envelope** |
 
 ### Composants Core
 
@@ -83,11 +89,20 @@ from dqf import DQFValidator, DQFConfig
 dates = pd.date_range("2024-01-01", periods=100, freq="D", tz="UTC")
 data = pd.DataFrame({...}, index=dates)
 
-validator = DQFValidator(DQFConfig())
-report = validator.validate(data, symbol="BTC-USD", source="yahoo")
+# v1.0.0 (historique — ne pas utiliser)
+# validator = DQFValidator(DQFConfig())
+# report = validator.validate(data, symbol="BTC-USD", source="yahoo")
 
-print(report.overall_status)
-report.to_yaml("report.yaml")
+# v1.1.0 (courant)
+from dqf import DQFValidator, DQFConfig, DQFMode
+from pathlib import Path
+
+validator = DQFValidator(DQFConfig(mode=DQFMode.CERTIFICATION))
+report = validator.validate(data, calendar="NYSE")
+
+print(report.overall_status)          # CERTIFIED / WARNING / VOID
+print(f"MPI: {report.purity_index}")
+Path("report.yaml").write_text(report.to_yaml())
 ```
 
 ### Configuration personnalisée
@@ -127,18 +142,23 @@ DataFrame → DQFConfig → DQFValidator → Checks → DQFReport → Exports
 
 ---
 
-## 📊 Métriques Qualité v1.0.0
+## 📊 Métriques Qualité
 
-### Tests
+### Tests v1.0.0 (historique)
 
 ```
-Total Tests:     104 (100%)
+Total Tests:     104 (100%)  — janvier 2026
   - Unit:        96 tests
   - Integration: 8 tests
-Durée:           1.24s
-Coverage:        77%
-Status:          ✅ 104/104 PASSING
-Warnings:        14 DeprecationWarning (datetime.utcnow)
+```
+
+### Tests v1.1.0 (courant)
+
+```
+Total Tests:     189 (100%)  — avril 2026
+  - Unit:        164 tests
+  - Integration: 25 tests
+Status:          ✅ 189/189 PASSING
 ```
 
 ### Code
@@ -164,28 +184,14 @@ Ratio Test/Prod: 0.89x
 
 ---
 
-## ⚠️ Limitations Connues v1.0.0
+## ⚠️ Limitations Connues v1.0.0 (toutes résolues en v1.1.0)
 
-### DeprecationWarning : `datetime.utcnow()`
-
-**Localisation** :  
-- `dqf/checks/check_7_logging.py:64`  
-- `dqf/core/report.py:46`
-
-**Impact** : Aucun (fonctionne en Python 3.12)  
-**Fix prévu** : v1.0.1 (migration vers `datetime.now(timezone.utc)`)
-
----
-
-### Example 03 : Crash ligne 222
-
-```
-AttributeError: 'str' object has no attribute 'isoformat'
-```
-
-**Cause** : `report.timestamp` est déjà une string ISO  
-**Fix** : supprimer `.isoformat()`  
-**Statut** : prévu v1.0.1  
+| Limitation v1.0.0 | Résolution v1.1.0 |
+|-------------------|-------------------|
+| `datetime.utcnow()` dans check_7_logging.py | Supprimé (C7 removed) |
+| Example 03 crash `report.timestamp.isoformat()` | Entièrement réécrit |
+| `DQFConfig()` sans mode (pas de validation) | Mode obligatoire + TypeError |
+| `report.checks_passed` / `total_checks` | Remplacé par `purity_index` + `precondition_gate` |
 
 ---
 
@@ -210,16 +216,25 @@ timestamp: str  # ISO 8601 string, not datetime
 
 ## 🗺️ Roadmap
 
-### v1.1.0 (minor)
+### v1.1.0 ✅ (courant — avril 2026)
 
-- API refinements  
-- Documentation Sphinx  
-- Performance improvements  
+- Modes CERTIFICATION / DIAGNOSTIC  
+- Classification CORE / ADVISORY  
+- PROD Envelope → MIF-Lite manifest (.mif.json)  
+- MIF Purity Index (MPI) : 0–100  
+- MIF-UID : SHA-256 déterministe  
+- C6 migré vers MIF Layer 1 ; C7 remplacé par PROD Envelope  
+- 189/189 tests passing  
 
-### v2.0.0 (major)
+### v1.2.0 (prévu)
 
-- Intégration DAL  
-- Active cleaning  
+- Active cleaning optionnel en mode CERTIFICATION  
+- Rapports diff avant/après  
+
+### v2.0.0 (prévu)
+
+- Intégration DAL (`get_certified_data()`)  
+- C1 activé — handoff DAL  
 - Provenance DAL-compatible  
 
 ---
