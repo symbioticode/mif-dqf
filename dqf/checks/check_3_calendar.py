@@ -87,7 +87,7 @@ class CalendarAlignmentCheck(BaseCheck):
             self._validate_dataframe(data)
             self._validate_datetime_index(data)
 
-            mode: DQFMode = kwargs.get("mode", DQFMode.DIAGNOSTIC)
+            mode: DQFMode = kwargs.get("mode", DQFMode.DIAGNOSTIC)  # Session 4 rewrite
             calendar: Optional[str] = kwargs.get("calendar", None)
             require_timezone: bool = kwargs.get("require_timezone", True)
             allow_weekends: bool = kwargs.get("allow_weekends", False)
