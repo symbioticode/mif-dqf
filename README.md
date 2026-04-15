@@ -169,8 +169,12 @@ load_to_warehouse(final_report.cleaned_data)  # ✅ Only clean data persisted
 ### Installation
 
 ```bash
-pip install dqf
+pip install mif-dqf
 ```
+
+> **Note — package name vs import name**: the PyPI package is `mif-dqf` but the
+> Python import is `from dqf import ...` (not `import mif_dqf`).
+> This is intentional: `dqf` is the canonical module namespace.
 
 ### Basic Usage
 

@@ -24,9 +24,11 @@ Vitality score mapping (D-SIG v0.5 labels):
   [ 0,  34] → CRITICAL
 """
 
+import base64
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 from dqf.core.enums import (
     PRECONDITION_GATE,
@@ -100,6 +102,7 @@ class PRODEnvelope:
     calendar: str
     intervention_log: InterventionLog
     n_total_points: int
+    cleaning_log_bytes: Optional[bytes] = field(default=None)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -143,6 +146,19 @@ class PRODEnvelope:
         """
         return hashlib.sha256(mif_uid.encode("utf-8")).hexdigest()
 
+    def _cleaning_log_uri(self) -> Optional[str]:
+        """
+        Return cleaning_log_uri for the manifest provenance block.
+
+        Phase 1 (no bytes): None
+        Phase 1 (bytes embedded): "embedded:sha256:<hex>"
+        Phase 2: external Parquet URI will be used instead.
+        """
+        if self.cleaning_log_bytes is None:
+            return None
+        digest = hashlib.sha256(self.cleaning_log_bytes).hexdigest()
+        return f"embedded:sha256:{digest}"
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -174,7 +190,7 @@ class PRODEnvelope:
 
         vitality_score = _mpi_to_vitality_score(mpi, overall_status)
 
-        return {
+        manifest = {
             "@context": "https://mif.dev/v1",
             "@type": "DataCertification",
             "mif_uid": mif_uid,
@@ -197,13 +213,18 @@ class PRODEnvelope:
                 "mode": self.mode.value,
                 "source_hash": self.raw_data_hash,
                 "calendar": self.calendar,
-                "cleaning_log_uri": None,  # Phase 2: Parquet URI
+                "cleaning_log_uri": self._cleaning_log_uri(),
             },
             "signature": {
                 "type": "sha256_provisional",
                 "value": source_sig,
             },
         }
+
+        if self.cleaning_log_bytes is not None:
+            manifest["cleaning_log"] = base64.b64encode(self.cleaning_log_bytes).decode("ascii")
+
+        return manifest
 
     def to_json(self, indent: int = 2) -> str:
         """Serialise the manifest as a JSON string."""
