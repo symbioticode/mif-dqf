@@ -98,6 +98,7 @@ class ForwardFillCheck(BaseCheck):
 
             max_consecutive_found = 0
             total_ffill_rows = 0
+            cleaning_entries: list[dict] = []
 
             # Analyze each column
             for col_name, col_actual in zip(check_lower, columns_actual, strict=True):
@@ -135,6 +136,19 @@ class ForwardFillCheck(BaseCheck):
                     max_consecutive_found = max(max_consecutive_found, max_seq)
                     total_ffill_rows += total_seq
 
+                    # Cleaning entries: one per row identified as forward fill
+                    ffill_mask = is_same_as_prev & ~series.isna()
+                    for idx in data.index[ffill_mask]:
+                        cleaning_entries.append({
+                            "row_index": str(idx),
+                            "check_id": "C4",
+                            "intervention": "forward_fill",
+                            "field": col_name,
+                            "value_before": float(series.loc[idx]),
+                            "value_after": None,
+                            "gravity": 0.5,
+                        })
+
             # Update overall stats
             details["max_consecutive_overall"] = max_consecutive_found
             details["total_ffill_rows"] = total_ffill_rows
@@ -152,6 +166,7 @@ class ForwardFillCheck(BaseCheck):
                     details=details,
                 )
                 result.interventions = log
+                result.cleaning_entries = cleaning_entries
                 return result
 
             if max_consecutive_found > warn_threshold:
@@ -162,6 +177,7 @@ class ForwardFillCheck(BaseCheck):
                     details=details,
                 )
                 result.interventions = log
+                result.cleaning_entries = cleaning_entries
                 return result
 
             # All clear
@@ -172,6 +188,7 @@ class ForwardFillCheck(BaseCheck):
                 details=details,
             )
             result.interventions = log
+            result.cleaning_entries = cleaning_entries
             return result
 
         except Exception as e:

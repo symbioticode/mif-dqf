@@ -74,7 +74,7 @@ class CalendarAlignmentCheck(BaseCheck):
             source: Data source identifier.
             metadata: Optional metadata dict.
             **kwargs:
-                mode     : DQFMode — defaults to DIAGNOSTIC for backwards compat.
+                mode     : DQFMode — required (D-01: no implicit default).
                 calendar : str | None — declared calendar name. Required in
                            CERTIFICATION mode.
                 require_timezone : bool (default True)
@@ -87,7 +87,7 @@ class CalendarAlignmentCheck(BaseCheck):
             self._validate_dataframe(data)
             self._validate_datetime_index(data)
 
-            mode: DQFMode = kwargs.get("mode", DQFMode.DIAGNOSTIC)  # Session 4 rewrite
+            mode: DQFMode = kwargs["mode"]  # D-01: mode must be declared — no implicit default
             calendar: str | None = kwargs.get("calendar", None)
             require_timezone: bool = kwargs.get("require_timezone", True)
             allow_weekends: bool = kwargs.get("allow_weekends", False)
@@ -237,6 +237,7 @@ class CalendarAlignmentCheck(BaseCheck):
         """
         issues = []
         off_calendar_count = 0
+        cleaning_entries: list[dict] = []
 
         # Weekend check for weekday-only calendars
         if calendar in WEEKDAY_ONLY_CALENDARS and not allow_weekends:
@@ -245,6 +246,16 @@ class CalendarAlignmentCheck(BaseCheck):
             if off_calendar_count > 0:
                 details["weekend_bars"] = off_calendar_count
                 issues.append(f"{off_calendar_count} weekend bar(s) outside {calendar} calendar")
+                for dt in weekend_bars:
+                    cleaning_entries.append({
+                        "row_index": str(dt),
+                        "check_id": "C3",
+                        "intervention": "calendar_removal",
+                        "field": "all",
+                        "value_before": None,
+                        "value_after": None,
+                        "gravity": 0.2,
+                    })
 
         details["off_calendar_bars"] = off_calendar_count
 
@@ -274,4 +285,5 @@ class CalendarAlignmentCheck(BaseCheck):
             )
 
         result.interventions = log
+        result.cleaning_entries = cleaning_entries
         return result

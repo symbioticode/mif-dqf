@@ -9,8 +9,10 @@ No mutable state is introduced after construction. Serialisation methods
 (to_json, to_yaml) reproduce the manifest verbatim.
 """
 
+import base64
 import json
 from dataclasses import dataclass
+from typing import Optional
 
 import pandas as pd
 import yaml
@@ -115,6 +117,29 @@ class DQFReport:
     def vitality_label(self) -> str:
         """D-SIG v0.5 label: EXCELLENT, GOOD, DEGRADED, or CRITICAL."""
         return self.manifest["vitality_signal"]["label"]
+
+    # ------------------------------------------------------------------
+    # Cleaning log (v1.2)
+    # ------------------------------------------------------------------
+
+    @property
+    def has_cleaning_log(self) -> bool:
+        """True when the manifest embeds a cleaning log (enable_cleaning_log=True was used)."""
+        return "cleaning_log" in self.manifest
+
+    def get_cleaning_log_df(self) -> Optional[pd.DataFrame]:
+        """
+        Decode and return the embedded cleaning log as a DataFrame.
+
+        Returns:
+            DataFrame with columns row_index, check_id, intervention, field,
+            value_before, value_after, gravity — or None if no log is embedded.
+        """
+        if not self.has_cleaning_log:
+            return None
+        from dqf.utils import cleaning_log as _cl  # local import to avoid circular deps
+        raw_bytes = base64.b64decode(self.manifest["cleaning_log"])
+        return _cl.from_parquet(raw_bytes)
 
     # ------------------------------------------------------------------
     # Serialisation

@@ -35,10 +35,11 @@ from dqf.core.enums import (
 )
 from dqf.core.prod_envelope import PRODEnvelope
 from dqf.core.report import DQFReport
+from dqf.utils import cleaning_log as _cleaning_log
 from dqf.utils.mpi import InterventionLog
 
 # DQF spec version — increment with any change to CORE check logic (spec §6)
-DQF_VERSION = "1.1.0"
+DQF_VERSION = "1.2.0"
 
 logger = logging.getLogger(__name__)
 
@@ -109,19 +110,23 @@ class DQFValidator:
         df: pd.DataFrame,
         calendar: str | None = None,
         raw_data_hash: str | None = None,
+        enable_cleaning_log: bool = False,
     ) -> DQFReport:
         """
         Run the full DQF validation pipeline.
 
         Args:
-            df           : OHLCV DataFrame to validate.
-            calendar     : Declared trading calendar (e.g. "NYSE"). Required
-                           in CERTIFICATION mode; optional in DIAGNOSTIC.
-            raw_data_hash: SHA-256 of the raw input data (hex string, prefixed
-                           "sha256:"). Computed from ``df`` if not provided.
-                           Callers should provide this when they hold the
-                           original bytes (e.g. from a DAL handoff), so the
-                           hash reflects the source, not the in-memory copy.
+            df                 : OHLCV DataFrame to validate.
+            calendar           : Declared trading calendar (e.g. "NYSE"). Required
+                                 in CERTIFICATION mode; optional in DIAGNOSTIC.
+            raw_data_hash      : SHA-256 of the raw input data (hex string, prefixed
+                                 "sha256:"). Computed from ``df`` if not provided.
+                                 Callers should provide this when they hold the
+                                 original bytes (e.g. from a DAL handoff), so the
+                                 hash reflects the source, not the in-memory copy.
+            enable_cleaning_log: When True, aggregate per-row intervention entries
+                                 from all checks and embed a Parquet cleaning log
+                                 in the manifest (v1.2). Default False.
 
         Returns:
             DQFReport wrapping the MIF-Lite manifest.
@@ -138,6 +143,7 @@ class DQFValidator:
         core_results: dict[str, str] = {}
         advisory_results: dict[str, str] = {}
         aggregated_log = InterventionLog()
+        all_cleaning_entries: list[dict] = []
 
         # ------------------------------------------------------------------
         # Run checks
@@ -166,6 +172,10 @@ class DQFValidator:
             if result.interventions is not None:
                 aggregated_log = aggregated_log + result.interventions
 
+            # Aggregate cleaning entries (v1.2)
+            if enable_cleaning_log and result.cleaning_entries:
+                all_cleaning_entries.extend(result.cleaning_entries)
+
             # Route to CORE or ADVISORY bucket
             if check_id in self.CORE_CHECKS:
                 core_results[check_id] = result.status
@@ -187,6 +197,11 @@ class DQFValidator:
         # ------------------------------------------------------------------
         n_total_points = max(df.shape[0] * 5, 1)  # rows × OHLCV columns
 
+        # Serialise cleaning log if requested
+        cleaning_log_bytes = (
+            _cleaning_log.to_parquet(all_cleaning_entries) if enable_cleaning_log else None
+        )
+
         envelope = PRODEnvelope(
             mode=self.config.mode,
             core_results=core_results,
@@ -196,6 +211,7 @@ class DQFValidator:
             calendar=calendar or "UNKNOWN",
             intervention_log=aggregated_log,
             n_total_points=n_total_points,
+            cleaning_log_bytes=cleaning_log_bytes,
         )
         manifest = envelope.build()
 

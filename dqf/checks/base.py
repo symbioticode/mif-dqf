@@ -66,6 +66,10 @@ class CheckResult:
     details: dict[str, Any] | None = None
     severity: str = "INFO"
     interventions: InterventionLog | None = None
+    cleaning_entries: list[dict] = field(default_factory=list)
+    # cleaning_entries: per-row detail dicts for CleaningLog (v1.2).
+    # Populated by checks that detect interventions. Aggregated by
+    # DQFValidator when enable_cleaning_log=True.
 
     def __post_init__(self):
         """Validate result after initialization."""

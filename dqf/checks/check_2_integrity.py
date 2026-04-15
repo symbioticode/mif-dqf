@@ -106,48 +106,66 @@ class IntegrityCheck(BaseCheck):
             }
 
             breakdown = {}
+            cleaning_entries: list[dict] = []
+
+            def _emit_violations(mask: "pd.Series", field: str) -> int:  # type: ignore[name-defined]
+                """Add cleaning entries for rows where mask is True."""
+                indices = data.index[mask]
+                for idx in indices:
+                    cleaning_entries.append({
+                        "row_index": str(idx),
+                        "check_id": "C2",
+                        "intervention": "physical_correction",
+                        "field": field,
+                        "value_before": None,
+                        "value_after": None,
+                        "gravity": 1.0,
+                    })
+                return int(mask.sum())
 
             # Check High >= Low
             if "high" in ohlcv and "low" in ohlcv:
-                count = int((data[ohlcv["high"]] < data[ohlcv["low"]]).sum())
+                count = _emit_violations(data[ohlcv["high"]] < data[ohlcv["low"]], "high_low")
                 if count > 0:
                     breakdown["high_low"] = count
 
             # Check High >= Open
             if "high" in ohlcv and "open" in ohlcv:
-                count = int((data[ohlcv["high"]] < data[ohlcv["open"]]).sum())
+                count = _emit_violations(data[ohlcv["high"]] < data[ohlcv["open"]], "high_open")
                 if count > 0:
                     breakdown["high_open"] = count
 
             # Check High >= Close
             if "high" in ohlcv and "close" in ohlcv:
-                count = int((data[ohlcv["high"]] < data[ohlcv["close"]]).sum())
+                count = _emit_violations(data[ohlcv["high"]] < data[ohlcv["close"]], "high_close")
                 if count > 0:
                     breakdown["high_close"] = count
 
             # Check Low <= Open
             if "low" in ohlcv and "open" in ohlcv:
-                count = int((data[ohlcv["low"]] > data[ohlcv["open"]]).sum())
+                count = _emit_violations(data[ohlcv["low"]] > data[ohlcv["open"]], "low_open")
                 if count > 0:
                     breakdown["low_open"] = count
 
             # Check Low <= Close
             if "low" in ohlcv and "close" in ohlcv:
-                count = int((data[ohlcv["low"]] > data[ohlcv["close"]]).sum())
+                count = _emit_violations(data[ohlcv["low"]] > data[ohlcv["close"]], "low_close")
                 if count > 0:
                     breakdown["low_close"] = count
 
             # Check for negative values in OHLC
             for col_name in ["open", "high", "low", "close"]:
                 if col_name in ohlcv:
-                    count = int((data[ohlcv[col_name]] < 0).sum())
+                    count = _emit_violations(
+                        data[ohlcv[col_name]] < 0, f"negative_{col_name}"
+                    )
                     if count > 0:
                         breakdown[f"negative_{col_name}"] = count
 
             # Check for negative volume (ignore NaN)
             if "volume" in ohlcv:
                 vol_series = data[ohlcv["volume"]]
-                count = int(((vol_series < 0) & vol_series.notna()).sum())
+                count = _emit_violations((vol_series < 0) & vol_series.notna(), "negative_volume")
                 if count > 0:
                     breakdown["negative_volume"] = count
 
@@ -162,8 +180,6 @@ class IntegrityCheck(BaseCheck):
             details["violation_rate"] = violation_rate
 
             # Emit interventions for MPI — physical violations detected
-            # (In Phase 1, DQF detects; Phase 2 will actively correct.
-            #  The count reflects what would need to be fixed.)
             log = InterventionLog(physical_corrections=total_violations)
 
             # Determine status
@@ -175,6 +191,7 @@ class IntegrityCheck(BaseCheck):
                     details=details,
                 )
                 result.interventions = log
+                result.cleaning_entries = cleaning_entries
                 return result
 
             result = self._create_result(
@@ -188,6 +205,7 @@ class IntegrityCheck(BaseCheck):
                 details=details,
             )
             result.interventions = log
+            result.cleaning_entries = cleaning_entries
             return result
 
         except Exception as e:

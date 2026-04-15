@@ -169,11 +169,11 @@ class TestDiagnosticMode:
         annotation = result.details.get("mode_annotation", "")
         assert "DIAGNOSTIC" in annotation
 
-    def test_default_mode_is_diagnostic(self):
-        """Calling run() without mode kwarg defaults to DIAGNOSTIC (backwards compat)."""
+    def test_diagnostic_mode_no_calendar(self):
+        """DIAGNOSTIC mode without calendar kwarg runs auto-detection."""
         check = CalendarAlignmentCheck()
         df = _make_nyse_df()
-        result = check.run(data=df)
+        result = check.run(data=df, mode=DQFMode.DIAGNOSTIC)
 
         assert result.status != STATUS_FAIL
 
