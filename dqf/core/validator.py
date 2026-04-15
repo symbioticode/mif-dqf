@@ -105,6 +105,30 @@ class DQFValidator:
     # Public API
     # ------------------------------------------------------------------
 
+    def add_custom_check(self, check_id: str, check: BaseCheck) -> None:
+        """
+        Register an additional check that runs as part of the validation pipeline.
+
+        Custom checks are treated as ADVISORY: a WARN result raises the overall
+        status to WARNING but never causes VOID.  They do not contribute to the
+        MPI (intervention-log) unless they populate ``result.interventions``.
+
+        Args:
+            check_id: Unique key for this check (e.g. ``"C8_pattern"``).
+                      Must not collide with built-in IDs (C1–C5, PROD).
+            check:    A :class:`~dqf.checks.base.BaseCheck` instance.
+
+        Raises:
+            ValueError: If *check_id* conflicts with a reserved built-in ID.
+        """
+        reserved = self.CORE_CHECKS | self.ADVISORY_CHECKS | {"PROD"}
+        if check_id in reserved:
+            raise ValueError(
+                f"check_id {check_id!r} conflicts with a reserved built-in ID. "
+                f"Reserved IDs: {sorted(reserved)}"
+            )
+        self._checks[check_id] = check
+
     def validate(
         self,
         df: pd.DataFrame,
