@@ -39,7 +39,7 @@ class ForwardFillCheck(BaseCheck):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Run forward-fill detection check.
@@ -139,15 +139,17 @@ class ForwardFillCheck(BaseCheck):
                     # Cleaning entries: one per row identified as forward fill
                     ffill_mask = is_same_as_prev & ~series.isna()
                     for idx in data.index[ffill_mask]:
-                        cleaning_entries.append({
-                            "row_index": str(idx),
-                            "check_id": "C4",
-                            "intervention": "forward_fill",
-                            "field": col_name,
-                            "value_before": float(series.loc[idx]),
-                            "value_after": None,
-                            "gravity": 0.5,
-                        })
+                        cleaning_entries.append(
+                            {
+                                "row_index": str(idx),
+                                "check_id": "C4",
+                                "intervention": "forward_fill",
+                                "field": col_name,
+                                "value_before": float(series.loc[idx]),
+                                "value_after": None,
+                                "gravity": 0.5,
+                            }
+                        )
 
             # Update overall stats
             details["max_consecutive_overall"] = max_consecutive_found

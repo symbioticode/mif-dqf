@@ -32,7 +32,7 @@ class IndexTraceabilityCheck(BaseCheck):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Execute index traceability validation.

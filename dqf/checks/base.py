@@ -71,7 +71,7 @@ class CheckResult:
     # Populated by checks that detect interventions. Aggregated by
     # DQFValidator when enable_cleaning_log=True.
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate result after initialization."""
         # v1.1 vocabulary: WARN replaces WARNING at the per-check level.
         # STATUS_WARNING ("WARNING") is the overall manifest status; it is
@@ -152,7 +152,7 @@ class BaseCheck(ABC):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Execute the validation check.
@@ -253,7 +253,7 @@ class BaseCheck(ABC):
             details=details or {},
         )
 
-    def _create_pass_result(self, message: str = "Check passed", **kwargs) -> CheckResult:
+    def _create_pass_result(self, message: str = "Check passed", **kwargs: Any) -> CheckResult:
         """
         Convenience method to create a passing result.
 
@@ -275,7 +275,7 @@ class BaseCheck(ABC):
         self,
         message: str,
         severity: str = SEVERITY_ERROR,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Convenience method to create a failing result.
@@ -295,7 +295,7 @@ class BaseCheck(ABC):
             **kwargs,
         )
 
-    def _create_warning_result(self, message: str, **kwargs) -> CheckResult:
+    def _create_warning_result(self, message: str, **kwargs: Any) -> CheckResult:
         """
         Convenience method to create a warning result.
 
@@ -314,7 +314,7 @@ class BaseCheck(ABC):
         )
 
     def _create_error_result(
-        self, message: str, exception: Exception | None = None, **kwargs
+        self, message: str, exception: Exception | None = None, **kwargs: Any
     ) -> CheckResult:
         """
         Convenience method to create an error result (for exceptions).

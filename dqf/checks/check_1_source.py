@@ -31,7 +31,7 @@ class SourceUniquenessCheck(BaseCheck):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Execute source uniqueness validation.
@@ -57,7 +57,7 @@ class SourceUniquenessCheck(BaseCheck):
             max_gap_days = kwargs.get("max_gap_days", 30)
 
             issues = []
-            details = {
+            details: dict[str, Any] = {
                 "symbol": symbol,
                 "source": source,
                 "row_count": len(data),

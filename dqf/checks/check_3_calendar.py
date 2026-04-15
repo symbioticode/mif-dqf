@@ -63,7 +63,7 @@ class CalendarAlignmentCheck(BaseCheck):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Execute calendar alignment validation.
@@ -203,7 +203,7 @@ class CalendarAlignmentCheck(BaseCheck):
                 detected = detect_calendar(symbol, data)
             else:
                 has_weekends = any(is_weekend(dt) for dt in data.index)
-                detected = "CRYPTO_247" if has_weekends else "NYSE"
+                detected = "CRYPTO_24_7" if has_weekends else "NYSE"
 
             effective_calendar = detected.upper() if detected != "UNKNOWN" else "NYSE"
             details["calendar_source"] = "INFERRED_CALENDAR"
@@ -247,15 +247,17 @@ class CalendarAlignmentCheck(BaseCheck):
                 details["weekend_bars"] = off_calendar_count
                 issues.append(f"{off_calendar_count} weekend bar(s) outside {calendar} calendar")
                 for dt in weekend_bars:
-                    cleaning_entries.append({
-                        "row_index": str(dt),
-                        "check_id": "C3",
-                        "intervention": "calendar_removal",
-                        "field": "all",
-                        "value_before": None,
-                        "value_after": None,
-                        "gravity": 0.2,
-                    })
+                    cleaning_entries.append(
+                        {
+                            "row_index": str(dt),
+                            "check_id": "C3",
+                            "intervention": "calendar_removal",
+                            "field": "all",
+                            "value_before": None,
+                            "value_after": None,
+                            "gravity": 0.2,
+                        }
+                    )
 
         details["off_calendar_bars"] = off_calendar_count
 

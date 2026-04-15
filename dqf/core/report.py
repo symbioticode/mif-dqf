@@ -12,7 +12,7 @@ No mutable state is introduced after construction. Serialisation methods
 import base64
 import json
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, cast
 
 import pandas as pd
 import yaml
@@ -38,7 +38,7 @@ class DQFReport:
         cleaned_data : The validated DataFrame (passthrough in Phase 1).
     """
 
-    manifest: dict
+    manifest: dict[str, Any]
     cleaned_data: pd.DataFrame
 
     # ------------------------------------------------------------------
@@ -48,7 +48,7 @@ class DQFReport:
     @property
     def overall_status(self) -> str:
         """One of: CERTIFIED, WARNING, VOID, FAIL."""
-        return self.manifest["status"]["overall"]
+        return cast(str, self.manifest["status"]["overall"])
 
     @property
     def precondition_gate(self) -> float:
@@ -57,12 +57,12 @@ class DQFReport:
 
         1.0 = CERTIFIED, 0.8 = WARNING (MPI-capped), 0.2 = FAIL, 0.0 = VOID.
         """
-        return self.manifest["status"]["precondition_gate"]
+        return cast(float, self.manifest["status"]["precondition_gate"])
 
     @property
     def purity_index(self) -> float:
         """MIF Purity Index in [0.0, 100.0]. 100.0 = zero intervention."""
-        return self.manifest["status"]["purity_index"]
+        return cast(float, self.manifest["status"]["purity_index"])
 
     @property
     def is_certified(self) -> bool:
@@ -76,34 +76,34 @@ class DQFReport:
     @property
     def mif_uid(self) -> str:
         """Unique certification identifier (sha256-prefixed hex digest)."""
-        return self.manifest["mif_uid"]
+        return cast(str, self.manifest["mif_uid"])
 
     @property
     def dqf_version(self) -> str:
-        return self.manifest["provenance"]["dqf_version"]
+        return cast(str, self.manifest["provenance"]["dqf_version"])
 
     @property
     def mode(self) -> str:
         """Validation mode as string: 'CERTIFICATION' or 'DIAGNOSTIC'."""
-        return self.manifest["provenance"]["mode"]
+        return cast(str, self.manifest["provenance"]["mode"])
 
     @property
     def calendar(self) -> str:
-        return self.manifest["provenance"]["calendar"]
+        return cast(str, self.manifest["provenance"]["calendar"])
 
     # ------------------------------------------------------------------
     # Check result accessors
     # ------------------------------------------------------------------
 
     @property
-    def core_results(self) -> dict:
+    def core_results(self) -> dict[str, Any]:
         """Dict[check_id → status_str] for CORE checks."""
-        return self.manifest["checks"]["core"]
+        return cast(dict[str, Any], self.manifest["checks"]["core"])
 
     @property
-    def advisory_results(self) -> dict:
+    def advisory_results(self) -> dict[str, Any]:
         """Dict[check_id → status_str] for ADVISORY checks."""
-        return self.manifest["checks"]["advisory"]
+        return cast(dict[str, Any], self.manifest["checks"]["advisory"])
 
     # ------------------------------------------------------------------
     # Vitality signal
@@ -111,12 +111,12 @@ class DQFReport:
 
     @property
     def vitality_score(self) -> int:
-        return self.manifest["vitality_signal"]["score"]
+        return cast(int, self.manifest["vitality_signal"]["score"])
 
     @property
     def vitality_label(self) -> str:
         """D-SIG v0.5 label: EXCELLENT, GOOD, DEGRADED, or CRITICAL."""
-        return self.manifest["vitality_signal"]["label"]
+        return cast(str, self.manifest["vitality_signal"]["label"])
 
     # ------------------------------------------------------------------
     # Cleaning log (v1.2)
@@ -127,7 +127,7 @@ class DQFReport:
         """True when the manifest embeds a cleaning log (enable_cleaning_log=True was used)."""
         return "cleaning_log" in self.manifest
 
-    def get_cleaning_log_df(self) -> Optional[pd.DataFrame]:
+    def get_cleaning_log_df(self) -> pd.DataFrame | None:
         """
         Decode and return the embedded cleaning log as a DataFrame.
 
@@ -138,6 +138,7 @@ class DQFReport:
         if not self.has_cleaning_log:
             return None
         from dqf.utils import cleaning_log as _cl  # local import to avoid circular deps
+
         raw_bytes = base64.b64decode(self.manifest["cleaning_log"])
         return _cl.from_parquet(raw_bytes)
 

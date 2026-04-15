@@ -15,7 +15,6 @@ Tests cover:
 """
 
 import pandas as pd
-import pytest
 
 from dqf.core.config import DQFConfig
 from dqf.core.enums import DQFMode
@@ -127,8 +126,15 @@ class TestCleaningLogEnabled:
         config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
         report = DQFValidator(config).validate(_ffill_df(), enable_cleaning_log=True)
         df = report.get_cleaning_log_df()
-        expected = {"row_index", "check_id", "intervention", "field",
-                    "value_before", "value_after", "gravity"}
+        expected = {
+            "row_index",
+            "check_id",
+            "intervention",
+            "field",
+            "value_before",
+            "value_after",
+            "gravity",
+        }
         assert set(df.columns) == expected
 
     def test_ffill_entries_have_correct_check_id(self):
@@ -155,6 +161,7 @@ class TestCleaningLogEnabled:
     def test_manifest_cleaning_log_is_base64_string(self):
         """manifest['cleaning_log'] must be a base64-decodable ASCII string."""
         import base64
+
         config = DQFConfig(mode=DQFMode.DIAGNOSTIC)
         report = DQFValidator(config).validate(_ffill_df(), enable_cleaning_log=True)
         assert "cleaning_log" in report.manifest
