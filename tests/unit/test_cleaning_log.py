@@ -24,7 +24,6 @@ Tests cover:
   - Bytes content is valid Parquet (pyarrow round-trip)
 """
 
-
 import pandas as pd
 import pytest
 
