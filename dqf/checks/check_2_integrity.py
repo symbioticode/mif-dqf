@@ -112,15 +112,17 @@ class IntegrityCheck(BaseCheck):
                 """Add cleaning entries for rows where mask is True."""
                 indices = data.index[mask]
                 for idx in indices:
-                    cleaning_entries.append({
-                        "row_index": str(idx),
-                        "check_id": "C2",
-                        "intervention": "physical_correction",
-                        "field": field,
-                        "value_before": None,
-                        "value_after": None,
-                        "gravity": 1.0,
-                    })
+                    cleaning_entries.append(
+                        {
+                            "row_index": str(idx),
+                            "check_id": "C2",
+                            "intervention": "physical_correction",
+                            "field": field,
+                            "value_before": None,
+                            "value_after": None,
+                            "gravity": 1.0,
+                        }
+                    )
                 return int(mask.sum())
 
             # Check High >= Low
@@ -156,9 +158,7 @@ class IntegrityCheck(BaseCheck):
             # Check for negative values in OHLC
             for col_name in ["open", "high", "low", "close"]:
                 if col_name in ohlcv:
-                    count = _emit_violations(
-                        data[ohlcv[col_name]] < 0, f"negative_{col_name}"
-                    )
+                    count = _emit_violations(data[ohlcv[col_name]] < 0, f"negative_{col_name}")
                     if count > 0:
                         breakdown[f"negative_{col_name}"] = count
 

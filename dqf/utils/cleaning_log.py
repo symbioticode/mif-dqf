@@ -20,7 +20,6 @@ gravity     : float — MPI weight: 1.0 physical, 0.5 ffill, 0.2 calendar remova
 from __future__ import annotations
 
 import io
-from typing import Optional
 
 import pandas as pd
 
@@ -36,7 +35,7 @@ _COLUMNS: list[str] = [
 ]
 
 
-def to_parquet(entries: list[dict]) -> Optional[bytes]:
+def to_parquet(entries: list[dict]) -> bytes | None:
     """
     Serialise a list of cleaning entry dicts to in-memory Parquet bytes.
 

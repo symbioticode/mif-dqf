@@ -247,15 +247,17 @@ class CalendarAlignmentCheck(BaseCheck):
                 details["weekend_bars"] = off_calendar_count
                 issues.append(f"{off_calendar_count} weekend bar(s) outside {calendar} calendar")
                 for dt in weekend_bars:
-                    cleaning_entries.append({
-                        "row_index": str(dt),
-                        "check_id": "C3",
-                        "intervention": "calendar_removal",
-                        "field": "all",
-                        "value_before": None,
-                        "value_after": None,
-                        "gravity": 0.2,
-                    })
+                    cleaning_entries.append(
+                        {
+                            "row_index": str(dt),
+                            "check_id": "C3",
+                            "intervention": "calendar_removal",
+                            "field": "all",
+                            "value_before": None,
+                            "value_after": None,
+                            "gravity": 0.2,
+                        }
+                    )
 
         details["off_calendar_bars"] = off_calendar_count
 

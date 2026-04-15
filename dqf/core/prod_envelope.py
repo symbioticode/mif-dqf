@@ -28,7 +28,6 @@ import base64
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Optional
 
 from dqf.core.enums import (
     PRECONDITION_GATE,
@@ -102,7 +101,7 @@ class PRODEnvelope:
     calendar: str
     intervention_log: InterventionLog
     n_total_points: int
-    cleaning_log_bytes: Optional[bytes] = field(default=None)
+    cleaning_log_bytes: bytes | None = field(default=None)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -146,7 +145,7 @@ class PRODEnvelope:
         """
         return hashlib.sha256(mif_uid.encode("utf-8")).hexdigest()
 
-    def _cleaning_log_uri(self) -> Optional[str]:
+    def _cleaning_log_uri(self) -> str | None:
         """
         Return cleaning_log_uri for the manifest provenance block.
 

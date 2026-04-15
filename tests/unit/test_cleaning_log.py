@@ -24,7 +24,6 @@ Tests cover:
   - Bytes content is valid Parquet (pyarrow round-trip)
 """
 
-import io
 
 import pandas as pd
 import pytest
@@ -153,7 +152,7 @@ class TestToParquetSchema:
 
     def test_missing_value_after_becomes_nan(self):
         """Entries without value_after produce NaN, not an error."""
-        entry = {k: v for k, v in C2_ENTRY.items()}  # has value_after = None
+        entry = dict(C2_ENTRY)  # has value_after = None
         result = to_parquet([entry])
         df = from_parquet(result)
         assert pd.isna(df["value_after"].iloc[0])
@@ -213,8 +212,15 @@ class TestFromParquetRoundTrip:
         assert df["value_before"].iloc[0] == pytest.approx(150.0)
 
     def test_column_names_match_schema(self):
-        expected = {"row_index", "check_id", "intervention", "field",
-                    "value_before", "value_after", "gravity"}
+        expected = {
+            "row_index",
+            "check_id",
+            "intervention",
+            "field",
+            "value_before",
+            "value_after",
+            "gravity",
+        }
         df = from_parquet(to_parquet([C2_ENTRY]))
         assert set(df.columns) == expected
 
