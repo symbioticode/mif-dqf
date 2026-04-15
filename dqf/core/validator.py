@@ -22,7 +22,7 @@ import logging
 
 import pandas as pd
 
-from dqf.checks.base import CheckResult
+from dqf.checks.base import BaseCheck, CheckResult
 from dqf.checks.check_2_integrity import IntegrityCheck
 from dqf.checks.check_3_calendar import CalendarAlignmentCheck
 from dqf.checks.check_4_ffill import ForwardFillCheck
@@ -89,7 +89,7 @@ class DQFValidator:
 
     def _init_checks(self) -> None:
         """Instantiate checks according to config."""
-        self._checks: dict[str, object] = {
+        self._checks: dict[str, BaseCheck] = {
             "C2": IntegrityCheck(),
             "C3": CalendarAlignmentCheck(),
             "C5": IndexTraceabilityCheck(),

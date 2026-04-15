@@ -43,7 +43,7 @@ class IntegrityCheck(BaseCheck):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Run OHLCV integrity check.
@@ -95,7 +95,7 @@ class IntegrityCheck(BaseCheck):
             }
 
             # Initialize details with violation_breakdown
-            details = {
+            details: dict[str, Any] = {
                 "symbol": symbol,
                 "source": source,
                 "row_count": len(data),
@@ -108,7 +108,7 @@ class IntegrityCheck(BaseCheck):
             breakdown = {}
             cleaning_entries: list[dict] = []
 
-            def _emit_violations(mask: "pd.Series", field: str) -> int:  # type: ignore[name-defined]
+            def _emit_violations(mask: "pd.Series[bool]", field: str) -> int:
                 """Add cleaning entries for rows where mask is True."""
                 indices = data.index[mask]
                 for idx in indices:

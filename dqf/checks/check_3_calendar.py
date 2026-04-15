@@ -63,7 +63,7 @@ class CalendarAlignmentCheck(BaseCheck):
         symbol: str | None = None,
         source: str | None = None,
         metadata: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> CheckResult:
         """
         Execute calendar alignment validation.
@@ -203,7 +203,7 @@ class CalendarAlignmentCheck(BaseCheck):
                 detected = detect_calendar(symbol, data)
             else:
                 has_weekends = any(is_weekend(dt) for dt in data.index)
-                detected = "CRYPTO_247" if has_weekends else "NYSE"
+                detected = "CRYPTO_24_7" if has_weekends else "NYSE"
 
             effective_calendar = detected.upper() if detected != "UNKNOWN" else "NYSE"
             details["calendar_source"] = "INFERRED_CALENDAR"
