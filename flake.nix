@@ -35,7 +35,8 @@
           pip
           virtualenv
           python-dotenv
-          
+          pyarrow
+
           # Build tools (CRITIQUE pour 'python -m build')
           build
           setuptools

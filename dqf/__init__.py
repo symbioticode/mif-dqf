@@ -31,9 +31,9 @@ For more information:
     - Examples: https://github.com/symbioticode/mif-dqf/tree/main/examples
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "dravitch"
-__email__ = "dravitch@example.com"
+__email__ = "corail-symbiotic@proton.me"
 
 
 # Base classes for custom checks
