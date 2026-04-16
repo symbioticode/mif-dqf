@@ -154,7 +154,7 @@ restore:
 # Git sync (commit + push)
 sync MESSAGE:
     @echo " Git sync..."
-    python scripts/local/git_sync.py "{{MESSAGE}}"
+    python scripts/local/sync.py "{{MESSAGE}}"
     @echo " Sync complete"
 
 # Annotated tag + push
