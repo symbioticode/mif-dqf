@@ -151,10 +151,18 @@ restore:
 # GIT
 # ─────────────────────────────────────────────
 
+# Git sync (commit + push)
+sync MESSAGE:
+    @echo " Git sync..."
+    python scripts/local/git_sync.py "{{MESSAGE}}"
+    @echo " Sync complete"
+
 # Annotated tag + push
 tag VERSION MESSAGE:
     git tag -a {{VERSION}} -m "{{MESSAGE}}"
     git push origin {{VERSION}}
+    @echo " Tag {{VERSION}} created"
+
 
 # ─────────────────────────────────────────────
 # DIAGNOSTICS
