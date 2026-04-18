@@ -1,13 +1,13 @@
 # DQF - Data Quality Framework
 
-[![Tests](https://img.shields.io/badge/tests-189%2F189%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/symbioticode/mif-dqf)
+[![Tests](https://img.shields.io/badge/tests-224%2F224%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/symbioticode/mif-dqf)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **MIF-certified data quality framework for OHLCV financial data.**
 
-DQF v1.1 validates financial time series through CORE and ADVISORY checks, produces
+DQF v1.2 validates financial time series through CORE and ADVISORY checks, produces
 **MIF-Lite manifests** with a cryptographic **MIF-UID** and a **MIF Purity Index (MPI)**,
 and supports two operational modes: **CERTIFICATION** (strict, deterministic) and
 **DIAGNOSTIC** (advisory, flexible).
@@ -176,6 +176,14 @@ pip install mif-dqf
 > Python import is `from dqf import ...` (not `import mif_dqf`).
 > This is intentional: `dqf` is the canonical module namespace.
 
+```python
+# Install
+# pip install mif-dqf
+
+# Import (module name is 'dqf', not 'mif_dqf')
+from dqf import DQFValidator, DQFConfig, DQFMode
+```
+
 ### Basic Usage
 
 ```python
@@ -209,6 +217,16 @@ report = DQFValidator(config).validate(data)
 print(f"Status: {report.overall_status}  MPI: {report.purity_index:.1f}")
 ```
 
+**v1.2 — Cleaning Log** (record every intervention in Parquet):
+```python
+# enable_cleaning_log=True captures per-row intervention detail
+report = validator.validate(df, calendar='NYSE', enable_cleaning_log=True)
+print(report.has_cleaning_log)         # False if data was clean
+df_log = report.get_cleaning_log_df()  # None or DataFrame with columns:
+                                        # row_index, check_id, intervention,
+                                        # field, value_before, value_after, gravity
+```
+
 **Output** (CERTIFICATION, clean data):
 ```
 ✅ CERTIFIED  MPI=100.0/100  gate=1.0
@@ -217,7 +235,7 @@ print(f"Status: {report.overall_status}  MPI: {report.purity_index:.1f}")
 
 ---
 
-## 📋 DQF v1.1 Checks
+## 📋 DQF v1.2 Checks
 
 ### CORE checks — failure → `STATUS_VOID`, `precondition_gate = 0.0`
 
@@ -236,6 +254,21 @@ print(f"Status: {report.overall_status}  MPI: {report.purity_index:.1f}")
 | C4 | **Forward-Fill Detection** | Detects interpolation abuse (consecutive repeats) |
 
 > **Removed in v1.1**: C6 (Sanity Tests) migrated to MIF Layer 1; C7 (Logging) replaced by PROD envelope.
+
+### Active Cleaning Log (v1.2)
+
+When `enable_cleaning_log=True`, every intervention detected by C2, C3, and C4
+is recorded in a Parquet log embedded in the manifest.
+
+| Property / Method | Description |
+|---|---|
+| `report.has_cleaning_log` | `True` when at least one intervention was logged |
+| `report.get_cleaning_log_df()` | Returns a `DataFrame` or `None` |
+| `manifest["cleaning_log"]` | Base64-encoded Parquet bytes |
+| `manifest["provenance"]["cleaning_log_uri"]` | `"embedded:sha256:…"` or `None` |
+
+The **MIF-UID is always computed on raw data** — the cleaning log does not affect
+the cryptographic identity of the dataset.
 
 ---
 
@@ -314,7 +347,7 @@ except ValueError as exc:
 from pathlib import Path
 from dqf import DQFValidator, DQFConfig, DQFMode
 
-CALENDAR = {"BTC-USD": "CRYPTO_247", "ETH-USD": "CRYPTO_247",
+CALENDAR = {"BTC-USD": "CRYPTO_24_7", "ETH-USD": "CRYPTO_24_7",
             "SPY": "NYSE", "GLD": "NYSE"}
 
 config    = DQFConfig(mode=DQFMode.CERTIFICATION)
@@ -341,35 +374,35 @@ for symbol, report in results.items():
 ### Example 4: Custom Check
 
 See `examples/04_custom_check.py` for a complete example. Custom checks extend
-`BaseCheck` and are added to `DQFValidator._checks` before calling `validate()`.
+`BaseCheck` and are registered via `validator.add_custom_check()`. They run as
+ADVISORY checks (WARN → `STATUS_WARNING`, never `STATUS_VOID`).
 
 ```python
+from typing import Any
 from dqf import DQFValidator, DQFConfig, DQFMode
-from dqf.checks.base import BaseCheck
-from dqf.core.enums import STATUS_FAIL, STATUS_PASS
+from dqf.checks.base import BaseCheck, CheckResult
 
 class LiquidityCheck(BaseCheck):
     """Advisory check: minimum daily volume."""
 
-    def __init__(self, min_vol: float = 1_000_000):
-        super().__init__(check_id="check_custom_liquidity",
-                         check_name="Minimum Liquidity")
+    def __init__(self, min_vol: float = 1_000_000) -> None:
+        super().__init__(check_id="C_LIQ", check_name="Minimum Liquidity")
         self.min_vol = min_vol
 
-    def run(self, data, **kwargs):
-        low = (data["volume"] < self.min_vol).sum()
+    def run(self, data, **kwargs: Any) -> CheckResult:
+        low = int((data["volume"] < self.min_vol).sum())
         if low:
-            return self._create_result(
-                status=STATUS_FAIL,
+            return self._create_warning_result(
                 message=f"{low} days below minimum volume ({self.min_vol:,.0f})",
                 details={"low_volume_days": low},
             )
-        return self._create_result(status=STATUS_PASS, message="Liquidity OK")
+        return self._create_pass_result(message="Liquidity OK")
 
 config    = DQFConfig(mode=DQFMode.DIAGNOSTIC)
 validator = DQFValidator(config)
-validator._checks["C_LIQ"] = LiquidityCheck(min_vol=500_000)
+validator.add_custom_check("C_LIQ", LiquidityCheck(min_vol=500_000))
 report    = validator.validate(data)
+print(report.advisory_results)  # {'C4': 'PASS', 'C_LIQ': 'PASS', 'C1': 'SKIP'}
 ```
 
 ---
@@ -422,7 +455,7 @@ report    = validator.validate(data)
 - **Deterministic**: Same data + same args → Same MIF-UID (always)
 - **Dual mode**: CERTIFICATION (strict) vs DIAGNOSTIC (advisory)
 - **MPI**: continuous purity score replaces binary PASS/FAIL
-- **Production-Ready**: 189/189 tests passing
+- **Production-Ready**: 224/224 tests passing
 
 ---
 
@@ -440,7 +473,7 @@ report    = validator.validate(data)
 
 ```bash
 # Run all tests
-pytest tests/ -v                    # 189/189 passing
+pytest tests/ -v                    # 224/224 passing
 
 # Coverage
 pytest tests/ --cov=dqf
@@ -453,7 +486,7 @@ python examples/04_custom_check.py        # ✅ Works
 ```
 
 **Quality Metrics**:
-- **189 tests** (164 unit + 25 integration)
+- **224 tests** (185 unit + 38 integration + 1 root)
 - **0 failures**
 
 ---
@@ -463,10 +496,10 @@ python examples/04_custom_check.py        # ✅ Works
 ```
 dqf/
 ├── dqf/                          # Source code
-│   ├── checks/                  # C1–C5 checks (v1.1.0)
+│   ├── checks/                  # C1–C5 checks
 │   ├── core/                    # Config, Validator, Report, PRODEnvelope
-│   └── utils/                   # Calendar utilities, MPI
-├── tests/                       # Test suite (189 tests)
+│   └── utils/                   # Calendar, MPI, CleaningLog
+├── tests/                       # Test suite (224 tests)
 │   ├── unit/                    # Per-module unit tests
 │   └── integration/             # End-to-end pipeline tests
 ├── examples/                    # Complete examples (4)
@@ -539,18 +572,21 @@ Total validation time: ~0.6s
 - 7 checks (Source, Integrity, Calendar, Forward-Fill, Index, Sanity, Logging)
 - Binary PASS/FAIL report
 
-### v1.1.0 (current) ✅
+### v1.1.0 ✅
 - ✅ Two operational modes: **CERTIFICATION** (strict) vs **DIAGNOSTIC** (advisory)
 - ✅ CORE/ADVISORY check classification — CORE failure → VOID, gate=0
 - ✅ PROD envelope produces MIF-Lite manifest (.mif.json)
 - ✅ MIF Purity Index (MPI) — 0–100 continuous purity score
 - ✅ MIF-UID — `SHA-256(data_hash + dqf_version + calendar + mode)`
 - ✅ C6 (Sanity) migrated to MIF Layer 1; C7 (Logging) replaced by PROD envelope
-- ✅ 189/189 tests passing
 
-### v1.2.0 — Active cleaning (planned)
-- [ ] Optional deterministic data transformation in CERTIFICATION mode
-- [ ] Before/after diff reports
+### v1.2.0 — Active Cleaning ✅ (current)
+- ✅ Optional cleaning log via `enable_cleaning_log=True`
+- ✅ Parquet log with per-intervention detail (row_index, check_id, field, gravity…)
+- ✅ `report.has_cleaning_log` / `report.get_cleaning_log_df()`
+- ✅ MIF-UID computed on raw data (cleaning log excluded from hash)
+- ✅ `validator.add_custom_check(check_id, check)` — custom ADVISORY checks
+- ✅ 224/224 tests passing
 
 ### v2.0.0 — MIF integration (planned)
 - [ ] DAL integration (`get_certified_data()`)
