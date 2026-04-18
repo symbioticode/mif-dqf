@@ -147,6 +147,20 @@ restore:
     @test -f scripts/local/cleanup.sh || (echo "❌ scripts/local/cleanup.sh not found" && exit 1)
     bash scripts/local/cleanup.sh restore
 
+# === ANTI-REGRESSION ===
+
+# Full anti-regression check before commit
+pre-commit:
+    @just sanitize
+    @echo ""
+    @echo " PRE-COMMIT CHECKS PASSED"
+    @echo "Ready to commit!"
+
+# Full validation pipeline (CI/CD style)
+ci: clean lint test-cov check-encoding
+    @echo ""
+    @echo " CI CHECKS PASSED"
+
 # ─────────────────────────────────────────────
 # GIT
 # ─────────────────────────────────────────────
@@ -154,15 +168,13 @@ restore:
 # Git sync (commit + push)
 sync MESSAGE:
     @echo " Git sync..."
-    python scripts/local/sync.py "{{MESSAGE}}"
+    python scripts/local/git_sync.py "{{MESSAGE}}"
     @echo " Sync complete"
 
 # Annotated tag + push
 tag VERSION MESSAGE:
     git tag -a {{VERSION}} -m "{{MESSAGE}}"
     git push origin {{VERSION}}
-    @echo " Tag {{VERSION}} created"
-
 
 # ─────────────────────────────────────────────
 # DIAGNOSTICS
