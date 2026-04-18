@@ -63,9 +63,9 @@ for rel in [
 print("\n── Version ─────────────────────────────────────────────")
 pyproject = (ROOT / "pyproject.toml").read_text()
 check(
-    'version = "1.2.0"' in pyproject,
-    "pyproject.toml: version = 1.2.0",
-    "pyproject.toml: version != 1.2.0",
+    'version = "1.2.0.post1"' in pyproject,
+    "pyproject.toml: version = 1.2.0.post1",
+    "pyproject.toml: version != 1.2.0.post1",
 )
 
 validator_src = (ROOT / "dqf/core/validator.py").read_text()
@@ -77,9 +77,9 @@ check(
 
 readme = (ROOT / "README.md").read_text()
 check(
-    "version-1.2.0" in readme,
-    "README.md: version badge = 1.2.0",
-    "README.md: version badge != 1.2.0",
+    "version-1.2.0.post1" in readme,
+    "README.md: version badge = 1.2.0.post1",
+    "README.md: version badge != 1.2.0.post1",
     warning=True,
 )
 check(
