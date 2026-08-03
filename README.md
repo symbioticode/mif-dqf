@@ -1,11 +1,11 @@
 # DQF - Data Quality Framework
 
 [![Tests](https://img.shields.io/badge/tests-224%2F224%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
-[![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/symbioticode/mif-dqf)
+[![Version](https://img.shields.io/pypi/v/mif-dqf)](https://pypi.org/project/mif-dqf/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**MIF-certified data quality framework for OHLCV financial data.**
+**mif-dqf** is the data quality layer of the [MIF ecosystem](https://github.com/symbioticode), certifying OHLCV financial data for [mif-dal](https://github.com/symbioticode/mif-dal) and other callers.
 
 DQF v1.2 validates financial time series through CORE and ADVISORY checks, produces
 **MIF-Lite manifests** with a cryptographic **MIF-UID** and a **MIF Purity Index (MPI)**,
