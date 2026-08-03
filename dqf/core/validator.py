@@ -166,6 +166,8 @@ class DQFValidator:
 
         core_results: dict[str, str] = {}
         advisory_results: dict[str, str] = {}
+        core_messages: dict[str, str] = {}
+        advisory_messages: dict[str, str] = {}
         aggregated_log = InterventionLog()
         all_cleaning_entries: list[dict] = []
 
@@ -203,18 +205,22 @@ class DQFValidator:
             # Route to CORE or ADVISORY bucket
             if check_id in self.CORE_CHECKS:
                 core_results[check_id] = result.status
+                core_messages[check_id] = result.message
             else:
                 advisory_results[check_id] = result.status
+                advisory_messages[check_id] = result.message
 
         # ------------------------------------------------------------------
         # PROD seal — envelope succeeds iff no unhandled crash above
         # (spec §4: "not a data check — it is the output format's trust mechanism")
         # ------------------------------------------------------------------
         core_results["PROD"] = "PASS"
+        core_messages["PROD"] = "PROD seal applied — no unhandled exception during validation"
 
         # C1 not in Phase 1 → explicit SKIP
         if "C1" not in advisory_results:
             advisory_results["C1"] = STATUS_SKIP
+            advisory_messages["C1"] = "C1 not implemented in Phase 1"
 
         # ------------------------------------------------------------------
         # MIF-Lite manifest
@@ -230,6 +236,8 @@ class DQFValidator:
             mode=self.config.mode,
             core_results=core_results,
             advisory_results=advisory_results,
+            core_messages=core_messages,
+            advisory_messages=advisory_messages,
             raw_data_hash=raw_data_hash,
             dqf_version=DQF_VERSION,
             calendar=calendar or "UNKNOWN",

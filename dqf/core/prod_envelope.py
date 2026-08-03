@@ -83,6 +83,10 @@ class PRODEnvelope:
         core_results     : Dict[check_id → status_str] for CORE checks.
                            Must include "PROD" (set to "PASS" by the validator).
         advisory_results : Dict[check_id → status_str] for ADVISORY checks.
+        core_messages    : Dict[check_id → message_str] for CORE checks.
+                           Mirrors core_results keys.
+        advisory_messages: Dict[check_id → message_str] for ADVISORY checks.
+                           Mirrors advisory_results keys.
         raw_data_hash    : Hex SHA-256 of the raw input DataFrame (prefixed
                            "sha256:"). Computed by the validator if not provided
                            by the caller.
@@ -102,6 +106,8 @@ class PRODEnvelope:
     intervention_log: InterventionLog
     n_total_points: int
     cleaning_log_bytes: bytes | None = field(default=None)
+    core_messages: dict = field(default_factory=dict)
+    advisory_messages: dict = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -201,6 +207,8 @@ class PRODEnvelope:
             "checks": {
                 "core": self.core_results,
                 "advisory": self.advisory_results,
+                "core_messages": self.core_messages,
+                "advisory_messages": self.advisory_messages,
             },
             "vitality_signal": {
                 "score": vitality_score,
