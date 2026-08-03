@@ -31,7 +31,7 @@ For more information:
     - Examples: https://github.com/symbioticode/mif-dqf/tree/main/examples
 """
 
-__version__ = "1.2.0.post1"
+__version__ = "1.3.0"
 __author__ = "dravitch"
 __email__ = "corail-symbiotic@proton.me"
 

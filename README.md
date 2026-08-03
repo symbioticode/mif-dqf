@@ -1,7 +1,7 @@
 # DQF - Data Quality Framework
 
 [![Tests](https://img.shields.io/badge/tests-224%2F224%20passing-brightgreen)](https://github.com/symbioticode/mif-dqf)
-[![Version](https://img.shields.io/badge/version-1.2.0.post1-blue)](https://github.com/symbioticode/mif-dqf)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/symbioticode/mif-dqf)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
