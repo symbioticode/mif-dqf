@@ -161,6 +161,15 @@ class TestCertificationMode:
         assert report.overall_status == STATUS_VOID
         assert report.core_results.get("C3") in ("FAIL", "ERROR")
 
+    def test_missing_calendar_exposes_specific_message(self, cert_config, clean_nyse_df):
+        """C3 failure must surface CheckResult.message, not just the bare status."""
+        validator = DQFValidator(cert_config)
+        report = validator.validate(clean_nyse_df, calendar=None)
+
+        c3_message = report.core_messages.get("C3")
+        assert c3_message
+        assert c3_message not in ("FAIL", "ERROR")
+
     def test_advisory_ffill_warn_returns_warning(self, cert_config, df_with_ffill):
         """C4 WARN → manifest STATUS_WARNING, gate ≤ 0.8."""
         validator = DQFValidator(cert_config)

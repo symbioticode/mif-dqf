@@ -105,6 +105,16 @@ class DQFReport:
         """Dict[check_id → status_str] for ADVISORY checks."""
         return cast(dict[str, Any], self.manifest["checks"]["advisory"])
 
+    @property
+    def core_messages(self) -> dict[str, Any]:
+        """Dict[check_id → message_str] for CORE checks."""
+        return cast(dict[str, Any], self.manifest["checks"].get("core_messages", {}))
+
+    @property
+    def advisory_messages(self) -> dict[str, Any]:
+        """Dict[check_id → message_str] for ADVISORY checks."""
+        return cast(dict[str, Any], self.manifest["checks"].get("advisory_messages", {}))
+
     # ------------------------------------------------------------------
     # Vitality signal
     # ------------------------------------------------------------------

@@ -39,6 +39,8 @@ def _make_envelope(
     mode=DQFMode.CERTIFICATION,
     core_results=None,
     advisory_results=None,
+    core_messages=None,
+    advisory_messages=None,
     raw_data_hash="sha256:abc123",
     dqf_version="1.1.0",
     calendar="NYSE",
@@ -49,6 +51,8 @@ def _make_envelope(
         mode=mode,
         core_results=core_results if core_results is not None else dict(CORE_PASS),
         advisory_results=advisory_results if advisory_results is not None else dict(ADVISORY_CLEAN),
+        core_messages=core_messages if core_messages is not None else {},
+        advisory_messages=advisory_messages if advisory_messages is not None else {},
         raw_data_hash=raw_data_hash,
         dqf_version=dqf_version,
         calendar=calendar,
@@ -129,6 +133,33 @@ class TestManifestStructure:
         c = _make_envelope().build()["checks"]
         assert "core" in c
         assert "advisory" in c
+
+    def test_checks_messages_keys(self):
+        c = _make_envelope().build()["checks"]
+        assert "core_messages" in c
+        assert "advisory_messages" in c
+
+    def test_checks_messages_default_empty(self):
+        """core_messages/advisory_messages default to {} when not supplied."""
+        c = _make_envelope().build()["checks"]
+        assert c["core_messages"] == {}
+        assert c["advisory_messages"] == {}
+
+    def test_checks_messages_content_preserved(self):
+        core_messages = {"PROD": "PROD seal applied", "C3": "Invalid calendar 'XYZ'"}
+        advisory_messages = {"C1": "C1 not implemented in Phase 1"}
+        c = _make_envelope(
+            core_messages=core_messages,
+            advisory_messages=advisory_messages,
+        ).build()["checks"]
+        assert c["core_messages"] == core_messages
+        assert c["advisory_messages"] == advisory_messages
+
+    def test_core_results_and_advisory_results_unchanged(self):
+        """Adding messages must not alter the type/content of existing status dicts."""
+        c = _make_envelope().build()["checks"]
+        assert c["core"] == CORE_PASS
+        assert c["advisory"] == ADVISORY_CLEAN
 
     def test_provenance_keys(self):
         p = _make_envelope().build()["provenance"]
