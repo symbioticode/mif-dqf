@@ -589,7 +589,9 @@ Total validation time: ~0.6s
 - ✅ 224/224 tests passing
 
 ### v2.0.0 — MIF integration (planned)
-- [ ] DAL integration (`get_certified_data()`)
+- ✅ DAL integration — `mif-dal` calls `DQFValidator.validate()` directly, passing
+  `raw_data_hash` (mif-dal's `assembly_hash`) so both layers anchor on the same hash
+  (live since mif-dal 0.1.1)
 - [ ] C1 (Source Uniqueness) activated — DAL handoff
 - [ ] Full provenance chain: source → DQF → MIF
 
