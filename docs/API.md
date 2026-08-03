@@ -122,9 +122,9 @@ validator = DQFValidator(config)
 ```python
 validate(
     df: pd.DataFrame,
-    symbol: str = None,
-    source: str = None,
-    **kwargs
+    calendar: str | None = None,
+    raw_data_hash: str | None = None,
+    enable_cleaning_log: bool = False,
 ) -> DQFReport
 ```
 
@@ -135,17 +135,22 @@ validate(
   - Required columns: `open`, `high`, `low`, `close`, `volume`
   - Column names are case-insensitive
   - Index must be DatetimeIndex (timezone-aware recommended)
-- `symbol` (str, optional): Trading symbol (e.g., "BTC-USD")
-- `source` (str, optional): Data source (e.g., "yahoo", "binance")
-- `**kwargs`: Additional parameters passed to checks
+- `calendar` (str, optional): Declared trading calendar (e.g. "NYSE"). Required
+  in CERTIFICATION mode; optional in DIAGNOSTIC.
+- `raw_data_hash` (str, optional): SHA-256 of the raw input data (hex string,
+  prefixed `"sha256:"`). Computed from `df` if not provided. Callers should
+  provide this when they hold the original bytes (e.g. from a DAL handoff),
+  so the hash reflects the source, not the in-memory copy.
+- `enable_cleaning_log` (bool, optional): When True, aggregate per-row
+  intervention entries from all checks and embed a Parquet cleaning log in
+  the manifest (v1.2). Default False.
 
 **Returns**:
 - `DQFReport`: Report object with results and cleaned data
 
 **Raises**:
 - `TypeError`: If `df` is not a pandas DataFrame
-  - Message format: `"Expected pd.DataFrame, got {actual_type}"`
-- `ValueError`: If DataFrame is empty or missing required columns
+  - Message format: `"df must be a pandas DataFrame, got {actual_type}"`
 
 **Example**:
 ```python
@@ -164,7 +169,7 @@ data = pd.DataFrame({
 
 config = DQFConfig()
 validator = DQFValidator(config)
-report = validator.validate(data, symbol="BTC-USD", source="yahoo")
+report = validator.validate(data, calendar="NYSE")
 
 print(f"Status: {report.overall_status}")
 print(f"Checks: {report.checks_passed}/{report.total_checks}")
@@ -2250,7 +2255,7 @@ config = DQFConfig()
 validator = DQFValidator(config)
 
 # Step 3: Validate
-report = validator.validate(data, symbol="BTC-USD", source="yahoo")
+report = validator.validate(data, calendar="NYSE")
 
 # Step 4: Interpret results
 print(f"Overall Status: {report.overall_status}")
@@ -2643,7 +2648,7 @@ if env == 'prod':
 
 ```python
 # ✅ GOOD: Always save provenance for production data
-report = validator.validate(data, symbol="BTC-USD", source="yahoo")
+report = validator.validate(data, calendar="NYSE")
 
 if report.overall_status == 'PASS':
     # Save validated data
